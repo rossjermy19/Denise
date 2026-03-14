@@ -200,6 +200,7 @@ html,body { height:100%; background:var(--bg); color:var(--text); font-family:va
 </head>
 <body>
 <div id="app"></div>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 
 const S={
@@ -240,18 +241,62 @@ async function callClaudeMCP(system,msg,mcpServers){
 async function fetchEmails(){
   S.emailsLoading=true;S.emailsError=null;render();
   try{
-    const res=await fetch(`${API()}/api/gmail/fetch`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    const data=await res.json();
-    if(data.error)throw new Error(data.error);
-    S.emails=(data.emails||[]).map(e=>({
-      ...e,
-      from_name:e.fromName||e.from_name||e.from||'',
-      from_email:e.fromEmail||e.from_email||'',
-      is_unread:e.unread??e.is_unread??false,
-    }));
-  }catch(e){console.error('Gmail:',e);S.emails=[];S.emailsError=e.message;}
-  S.emailsLoading=false;render();
-  if(S.emails.length>0&&!S.alertsGenerated)generateAlerts();
+    // Get OAuth token via Google Identity Services
+    const token = await new Promise((resolve, reject) => {
+      if(window._gTok && window._gExp > Date.now()){ resolve(window._gTok); return; }
+      if(!window.google || !window.google.accounts){ reject(new Error('Google sign-in loading, try again in a moment')); return; }
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: '597561744602-3pmav3dbg17itvh5d7kgr1ddil9ii548.apps.googleusercontent.com',
+        scope: 'https://www.googleapis.com/auth/gmail.readonly',
+        callback: (resp) => {
+          if(resp.error){ reject(new Error(resp.error)); return; }
+          window._gTok = resp.access_token;
+          window._gExp = Date.now() + 3500000;
+          resolve(resp.access_token);
+        },
+        error_callback: (err) => reject(new Error(err.type + ': ' + (err.message||'')))
+      });
+      client.requestAccessToken();
+    });
+
+    // Fetch message list
+    const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=in:inbox', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    const listData = await listRes.json();
+    if(listData.error) throw new Error(listData.error.message);
+
+    // Fetch each message metadata in parallel
+    const msgs = listData.messages || [];
+    const details = await Promise.all(msgs.map(m =>
+      fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + m.id + '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date', {
+        headers: { Authorization: 'Bearer ' + token }
+      }).then(r => r.json())
+    ));
+
+    S.emails = details.map(m => {
+      const hdrs = m.payload?.headers || [];
+      const get = n => (hdrs.find(h => h.name.toLowerCase() === n.toLowerCase()) || {}).value || '';
+      const from = get('From');
+      const fm = from.match(/^(.*?)\s*<(.+?)>$/) || [null, from, from];
+      const dt = new Date(get('Date'));
+      return {
+        id: m.id, threadId: m.threadId,
+        subject: get('Subject') || '(no subject)',
+        from_name: (fm[1] || '').replace(/"/g, '').trim() || fm[2],
+        from_email: fm[2] || from,
+        date: isNaN(dt) ? '' : dt.toLocaleDateString('en-GB', {day:'numeric', month:'short'}),
+        snippet: (m.snippet || '').slice(0, 120),
+        is_unread: (m.labelIds || []).includes('UNREAD'),
+      };
+    });
+  } catch(e) {
+    console.error('Gmail:', e);
+    S.emails = [];
+    S.emailsError = e.message;
+  }
+  S.emailsLoading = false; render();
+  if(S.emails.length > 0 && !S.alertsGenerated) generateAlerts();
 }
 
 async function fetchEmailBody(emailId){
