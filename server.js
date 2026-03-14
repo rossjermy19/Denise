@@ -208,5 +208,13 @@ app.post("/webhook/pocket", (req, res) => {
 });
 
 app.get("/webhook/pocket", (req, res) => res.json({ ok: true }));
+app.delete("/api/calls/:id", (req, res) => {
+  const db = loadDB();
+  db.calls = db.calls.filter(c => c.id !== req.params.id);
+  db.tasks = db.tasks.filter(t => t.recordingId !== req.params.id);
+  saveDB(db);
+  res.json({ ok: true });
+});
+
 app.get("/health", (req, res) => res.json({ ok: true }));
 app.listen(PORT, () => console.log("Denise backend on port " + PORT));

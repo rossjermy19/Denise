@@ -282,6 +282,14 @@ async function syncPocket() {
   setTimeout(()=>{ S.syncMsg=null; render(); },4000);
 }
 
+async function deleteCall(id) {
+  if (!confirm('Remove this recording from Denise? (It will not be deleted from your Pocket app)')) return;
+  S.calls = S.calls.filter(c => c.id !== id);
+  if (S.selectedCall?.id === id) S.selectedCall = null;
+  render();
+  try { await fetch(`${API()}/api/calls/${id}`, { method: 'DELETE' }); } catch {}
+}
+
 async function sendChat(msg) {
   if (!msg.trim()||S.chatLoading) return;
   S.messages.push({role:'user',text:msg});
@@ -333,7 +341,8 @@ async function wizCheckWebhook() {
     const data = await res.json();
     S.webhookResult=data;
     if (data.ok) { localStorage.setItem('pa_setup_done','1'); setTimeout(()=>{ render(); fetchData(); startPolling(); },1000); }
-  } catch { S.webhookResult={ok:false,message:'Could not reach backend'}; }
+    else { S.webhookResult={ok:false,message:'No recordings received yet — make a short test recording on your Pocket device first, then try again.'}; }
+  } catch { S.webhookResult={ok:false,message:'Could not reach backend at ' + API()}; }
   S.checkingWebhook=false; render();
 }
 
@@ -420,12 +429,15 @@ function renderSetup() {
               <button class="copy-btn" id="copyUrl" onclick="copyText('${esc(webhookUrl)}','copyUrl')">Copy</button>
             </div>
           </div>
-          <div class="wiz-note">Paste the webhook URL above into the Pocket app developer settings and save. Then make a short test recording. Once it syncs, click Verify below.</div>
+          <div class="wiz-note">
+            ✓ If the Pocket app saved the webhook URL successfully, you're connected — click <strong>Go to dashboard</strong> below.<br><br>
+            To also verify live data flow: make a short test recording on your Pocket device, wait for it to sync, then click <strong>Verify recording received</strong>.
+          </div>
           ${S.webhookResult&&!S.webhookResult.ok?`<div class="wiz-err">${esc(S.webhookResult.message)}</div>`:''}
           ${S.webhookResult?.ok?`<div class="wiz-ok">✓ Webhook working — taking you to Denise...</div>`:''}
           <div class="btn-row">
-            <button class="wiz-btn primary" id="btnCheckWebhook">${S.checkingWebhook?'Checking...':'Verify connection'}</button>
-            <button class="wiz-btn secondary" id="btnSkip">Skip for now</button>
+            <button class="wiz-btn primary" id="btnCheckWebhook">${S.checkingWebhook?'Checking...':'Verify recording received'}</button>
+            <button class="wiz-btn primary" id="btnSkip">Webhook saved — go to dashboard →</button>
           </div>
         `:''}
       </div>
@@ -510,12 +522,17 @@ function renderDashTab(overdue) {
           const [fg,bg] = callColor(call.id);
           const sel = S.selectedCall?.id===call.id;
           return `
-            <div class="call-row ${sel?'selected':''}" data-call="${esc(call.id)}">
-              <div class="avatar" style="background:${bg};color:${fg}">${esc(initials(call))}</div>
-              <div class="call-info">
-                <div class="call-name">${esc(call.title)}</div>
-                <div class="call-sub">${esc(fmtDate(call.createdAt))}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <div class="call-row ${sel?'selected':''}" data-call="${esc(call.id)}" style="flex:1">
+                <div class="avatar" style="background:${bg};color:${fg}">${esc(initials(call))}</div>
+                <div class="call-info">
+                  <div class="call-name">${esc(call.title)}</div>
+                  <div class="call-sub">${esc(fmtDate(call.createdAt))}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div>
+                </div>
               </div>
+              <button class="delete-call-btn" data-delete="${esc(call.id)}" title="Remove from Denise" style="flex-shrink:0;width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" onmouseenter="this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/><path d="M9,6V4h6v2"/></svg>
+              </button>
             </div>
             ${sel?`
               <div class="call-detail" style="border-left-color:${fg}">
@@ -634,6 +651,13 @@ function bindEvents() {
       const call = S.calls.find(c=>c.id===row.dataset.call);
       S.selectedCall = S.selectedCall?.id===row.dataset.call ? null : call;
       render();
+    });
+  });
+
+  document.querySelectorAll('[data-delete]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      e.stopPropagation();
+      deleteCall(btn.dataset.delete);
     });
   });
 
