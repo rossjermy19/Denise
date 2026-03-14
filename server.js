@@ -215,68 +215,67 @@ app.post("/api/gmail/fetch", async (req, res) => {
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) return res.status(400).json({ error: "GMAIL_USER and GMAIL_APP_PASSWORD not set in Railway" });
   try {
-    const creds = Buffer.from(`${user}:${pass}`).toString("base64");
+    const creds = Buffer.from(user + ":" + pass).toString("base64");
     const r = await fetch("https://mail.google.com/mail/feed/atom", {
-      headers: { Authorization: `Basic ${creds}`, Accept: "application/atom+xml" }
+      headers: { Authorization: "Basic " + creds, Accept: "application/atom+xml" }
     });
-    if (!r.ok) return res.status(400).json({ error: `Gmail returned ${r.status} — check credentials` });
+    if (!r.ok) return res.status(400).json({ error: "Gmail returned " + r.status + " — check credentials" });
     const xml = await r.text();
 
-    // Parse Atom XML
-    const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map(m => {
+    // Parse entries from Atom XML
+    const entryMatches = xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g);
+    const entries = [];
+    for (const m of entryMatches) {
       const entry = m[1];
-      const get = tag => { const m = entry.match(new RegExp(`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`)); return m ? m[1].trim() : ""; };
-      const getAttr = (tag, attr) => { const m = entry.match(new RegExp(`<${tag}[^>]*${attr}="([^"]*?)"`)); return m ? m[1] : ""; };
-      const from = entry.match(/<author>([\s\S]*?)<\/author>/);
-      const fromName = from ? (from[1].match(/<name>([\s\S]*?)<\/name>/)?.[1] || "") : "";
-      const fromEmail = from ? (from[1].match(/<email>([\s\S]*?)<\/email>/)?.[1] || "") : "";
-      const issued = get("issued") || get("modified") || "";
+      const getTag = (tag) => { const rx = new RegExp("<" + tag + "[^>]*>([\\s\\S]*?)<\\/" + tag + ">"); const found = entry.match(rx); return found ? found[1].trim() : ""; };
+      const authorBlock = entry.match(/<author>([\s\S]*?)<\/author>/);
+      const fromName = authorBlock ? (authorBlock[1].match(/<name>([\s\S]*?)<\/name>/) || [])[1] || "" : "";
+      const fromEmail = authorBlock ? (authorBlock[1].match(/<email>([\s\S]*?)<\/email>/) || [])[1] || "" : "";
+      const issued = getTag("issued") || getTag("modified") || "";
       const dt = issued ? new Date(issued) : new Date();
-      return {
-        id: get("id"),
-        subject: get("title") || "(no subject)",
+      entries.push({
+        id: getTag("id"),
+        subject: getTag("title") || "(no subject)",
         fromName: fromName.trim(),
         fromEmail: fromEmail.trim(),
-        from: `${fromName.trim()} <${fromEmail.trim()}>`,
-        snippet: get("summary").slice(0, 120),
-        body: get("summary").slice(0, 400),
-        date: dt.toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-        time: dt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+        from: fromName.trim() + " <" + fromEmail.trim() + ">",
+        snippet: getTag("summary").slice(0, 120),
+        body: getTag("summary").slice(0, 400),
+        date: isNaN(dt.getTime()) ? "" : dt.toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+        time: isNaN(dt.getTime()) ? "" : dt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
         unread: true,
         needsReply: false,
         replyReason: null,
-      };
-    });
+      });
+    }
 
-    // Use Anthropic to flag which emails need replies
+    // Use Claude Haiku to flag which emails need replies
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (apiKey && entries.length > 0) {
       try {
-        const ctx = entries.map((e, i) => `${i+1}. From: ${e.fromName} <${e.fromEmail}> | Subject: ${e.subject} | Preview: ${e.snippet}`).join("
-");
+        const ctx = entries.map((e, i) => (i+1) + ". From: " + e.fromName + " | Subject: " + e.subject + " | Preview: " + e.snippet).join("\n");
         const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
             model: "claude-haiku-4-5-20251001",
-            max_tokens: 500,
-            system: "You are analysing emails for Ross Jermy at Moov Parcel (UK shipping logistics). Return ONLY a JSON array of numbers (1-based indexes) of emails that need a reply — i.e. contain questions, requests, or require action from Ross. Example: [1,3,5]. No other text.",
-            messages: [{ role: "user", content: `Which of these emails need a reply?
-${ctx}` }]
+            max_tokens: 200,
+            system: "You analyse emails for Ross Jermy at Moov Parcel (UK shipping logistics). Return ONLY a JSON array of 1-based indexes of emails needing a reply — questions, requests, action required. Example: [1,3,5]. No other text.",
+            messages: [{ role: "user", content: "Which need a reply?\n" + ctx }]
           })
         });
         const aiData = await aiRes.json();
-        const aiText = (aiData.content || []).find(b => b.type === "text")?.text || "[]";
-        const needsReplyIndexes = JSON.parse(aiText.match(/\[[\s\S]*\]/)?.[0] || "[]");
-        needsReplyIndexes.forEach(idx => {
-          if (entries[idx-1]) entries[idx-1].needsReply = true;
-        });
+        const aiText = ((aiData.content || []).find(b => b.type === "text") || {}).text || "[]";
+        const match = aiText.match(/\[[\s\S]*?\]/);
+        const indexes = match ? JSON.parse(match[0]) : [];
+        indexes.forEach(idx => { if (entries[idx-1]) entries[idx-1].needsReply = true; });
       } catch(e) { console.error("AI flagging error:", e.message); }
     }
 
     res.json({ emails: entries });
   } catch(e) { console.error("Gmail feed error:", e.message); res.status(500).json({ error: e.message }); }
 });
+
 
 // ── Webhook ───────────────────────────────────────────────────────────
 app.post("/webhook/pocket", (req, res) => {
