@@ -201,6 +201,9 @@ html,body { height:100%; background:var(--bg); color:var(--text); font-family:va
 <body>
 <div id="app"></div>
 <script>
+const CLICKUP_TOKEN='';
+const CLICKUP_TEAM='4663587';
+const CLICKUP_USER='44548556';
 
 const S={
   tab:'dashboard',
@@ -241,7 +244,7 @@ async function fetchEmails(){
   S.emailsLoading=true;render();
   try{
     const text=await callClaudeMCP(
-      'Use the Gmail MCP tool to fetch the inbox for ross.jermy@moovparcel.co.uk. Return ONLY a valid JSON array (no markdown, no backticks, no explanation) of the 20 most recent emails with these exact fields: id (string), subject (string), from_name (string), from_email (string), date (ISO string), snippet (string, max 100 chars), is_unread (boolean). Sort newest first.',
+      'Use the Gmail MCP tool to fetch the user\'s inbox. Return ONLY a valid JSON array (no markdown, no backticks, no explanation) of the 20 most recent emails with these exact fields: id (string), subject (string), from_name (string), from_email (string), date (ISO string), snippet (string, max 100 chars), is_unread (boolean). Sort newest first.',
       'Fetch 20 most recent Gmail inbox messages for ross.jermy@moovparcel.co.uk. Return JSON array only, no other text.',
       [{type:'url',url:'https://gmail.mcp.claude.com/mcp',name:'gmail'}]
     );
@@ -310,10 +313,9 @@ async function completeClickUpTask(taskId,taskName){
   if(!confirm(`Mark "${taskName}" as complete in ClickUp?`))return;
   S.cuCompleted[taskId]=true;render();
   try{
-    const res=await fetch(`${API()}/api/clickup/tasks/${taskId}/complete`,{method:'PUT'});
-    const d=await res.json();
-    if(d.ok)setTimeout(()=>{S.cuTasks=S.cuTasks.filter(t=>t.id!==taskId);render();},500);
-    else{delete S.cuCompleted[taskId];render();}
+    const cr=await fetch(`${API()}/api/clickup/tasks/${taskId}/complete`,{method:'PUT'});
+    const cd=await cr.json();
+    if(cd.ok)setTimeout(()=>{S.cuTasks=S.cuTasks.filter(t=>t.id!==taskId);render();},500);
   }catch(e){delete S.cuCompleted[taskId];render();}
 }
 
@@ -438,7 +440,7 @@ function renderDash(){
     </div>
   </div>
   <div class="body">
-    ${S.tab==='dashboard'?renderDashTab(overdue,unread):S.tab==='dashboard'?renderDashTab(overdue):S.tab==='clickup'?renderClickUpTab():S.tab==='gmail'?renderGmailTab():renderPATab()}
+    ${S.tab==='dashboard'?renderDashTab(overdue,unread):S.tab==='gmail'?renderGmailTab():S.tab==='clickup'?renderClickUpTab():S.tab==='pocket'?renderPocketTab(overdue):renderPATab()}
   </div></div>`;
 }
 
@@ -596,18 +598,6 @@ function bindEvents(){
   const ci=document.getElementById('chatInput');if(ci)ci.addEventListener('keydown',e=>{if(e.key==='Enter'){sendChat(ci.value);ci.value='';}});
   const bs=document.getElementById('btnSend');if(bs)bs.addEventListener('click',()=>{const i=document.getElementById('chatInput');if(i){sendChat(i.value);i.value='';}});
   document.querySelectorAll('[data-quick]').forEach(b=>{b.addEventListener('click',()=>{const i=document.getElementById('chatInput');if(i)i.value=b.dataset.quick;});});
-  document.querySelectorAll('[data-complete]').forEach(btn => {
-    btn.addEventListener('click', e => { e.stopPropagation(); completeClickUpTask(btn.dataset.complete); });
-  });
-
-  document.querySelectorAll('[data-email]').forEach(row => {
-    row.addEventListener('click', () => fetchGmailFull(row.dataset.email));
-  });
-
-  // Auto-load tabs when first visited
-  if (S.tab === 'clickup' && !S.clickupTasks.length && !S.clickupLoading && !S.clickupError) fetchClickUp();
-  if (S.tab === 'gmail' && !S.gmailMessages.length && !S.gmailLoading) {}
-
   scrollChat();
 }
 
@@ -619,56 +609,3 @@ if(isSetup()){fetchData();fetchClickUp();startPolling();}
 </script>
 </body>
 </html>
-// ── Gmail via Anthropic MCP ────────────────────────────────────────────
-async function fetchGmail() {
-  S.gmailLoading = true; S.gmailError = null; render();
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        system: 'You are a helpful assistant. Use the Gmail MCP tool to fetch the 20 most recent emails from the inbox of <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a3d1ccd0d08dc9c6d1cedae3ceccccd5d3c2d1c0c6cf8dc0cc8dd6c8">[email&#160;protected]</a>. Return ONLY valid JSON with no other text, no markdown, no backticks: {"emails": [{"id": "...", "from": "...", "subject": "...", "date": "...", "snippet": "...", "needsReply": true or false, "replyReason": "reason or null"}]}. Set needsReply true if the email contains a question, request, or action item directed at Ross.',
-        messages: [{ role: 'user', content: 'Fetch my 20 most recent Gmail inbox emails and return as JSON.' }],
-        mcp_servers: [{ type: 'url', url: 'https://gmail.mcp.claude.com/mcp', name: 'gmail-mcp' }]
-      })
-    });
-    const data = await res.json();
-    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    const clean = text.replace(/```json|```/g, '').trim();
-    const m = clean.match(/\{[\s\S]*\}/);
-    if (m) {
-      const parsed = JSON.parse(m[0]);
-      S.gmailMessages = parsed.emails || [];
-      S.gmailError = null;
-    } else {
-      S.gmailError = 'Could not parse Gmail response. Raw: ' + clean.slice(0, 100);
-    }
-  } catch(e) { S.gmailError = 'Failed: ' + e.message; }
-  S.gmailLoading = false; render();
-}
-
-async function fetchGmailFull(id) {
-  S.gmailSelected = { id, loading: true };
-  render();
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        system: 'Fetch the full body of the Gmail message with the given ID for <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="62100d11114c0807100f1b220f0d0d1412031001070e4c010d4c1709">[email&#160;protected]</a>. Return ONLY JSON with no other text: {"body": "full email text", "from": "sender name and email", "subject": "subject line"}',
-        messages: [{ role: 'user', content: 'Get full body of Gmail message ID: ' + id }],
-        mcp_servers: [{ type: 'url', url: 'https://gmail.mcp.claude.com/mcp', name: 'gmail-mcp' }]
-      })
-    });
-    const data = await res.json();
-    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    const clean = text.replace(/```json|```/g, '').trim();
-    const m = clean.match(/\{[\s\S]*\}/);
-    if (m) {
-      const parsed = JSON.parse(m[0]);
-      S.gmailSelected = { id, loading: false, ...parsed };
-    } 
