@@ -1,7 +1,10 @@
 import express from "express";
 import cors from "cors";
 import { readFileSync, writeFileSync, existsSync } from "fs";
+import { fileURLToPath } from "url";
+import path from "path";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
 const POCKET_BASE = "https://public.heypocketai.com/api/v1";
 const CLICKUP_BASE = "https://api.clickup.com/api/v2";
@@ -9,45 +12,24 @@ const CLICKUP_API_KEY = process.env.CLICKUP_API_KEY || "";
 const CLICKUP_TEAM_ID = "4663587";
 
 const app = express();
-app.use(cors({ origin: "*", methods: ["GET","POST","PATCH","DELETE","OPTIONS"], allowedHeaders: ["Content-Type","Authorization"] }));
+app.use(cors({ origin: "*", methods: ["GET","POST","PATCH","DELETE","PUT","OPTIONS"], allowedHeaders: ["Content-Type","Authorization"] }));
 app.options("*", cors());
 app.use("/webhook", express.raw({ type: "application/json" }));
 app.use(express.json());
+app.use(express.static(__dirname));
 
 const DB_FILE = "./db.json";
 const CONFIG_FILE = "./config.json";
 
-function loadDB() {
-  if (!existsSync(DB_FILE)) return { tasks: [], calls: [] };
-  return JSON.parse(readFileSync(DB_FILE, "utf8"));
-}
-function saveDB(data) { writeFileSync(DB_FILE, JSON.stringify(data, null, 2)); }
-function loadConfig() {
-  if (!existsSync(CONFIG_FILE)) return { pocketApiKey: "", configured: false };
-  return JSON.parse(readFileSync(CONFIG_FILE, "utf8"));
-}
-function saveConfig(cfg) { writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2)); }
+function loadDB() { if (!existsSync(DB_FILE)) return { tasks: [], calls: [] }; return JSON.parse(readFileSync(DB_FILE, "utf8")); }
+function saveDB(d) { writeFileSync(DB_FILE, JSON.stringify(d, null, 2)); }
+function loadConfig() { if (!existsSync(CONFIG_FILE)) return { pocketApiKey: "", configured: false }; return JSON.parse(readFileSync(CONFIG_FILE, "utf8")); }
+function saveConfig(c) { writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2)); }
 
-async function pocketGet(path, apiKey) {
+async function pocketGet(p, apiKey) {
   const key = apiKey || loadConfig().pocketApiKey;
-  const res = await fetch(POCKET_BASE + path, { headers: { Authorization: "Bearer " + key } });
+  const res = await fetch(POCKET_BASE + p, { headers: { Authorization: "Bearer " + key } });
   if (!res.ok) throw new Error("Pocket API " + res.status);
-  return res.json();
-}
-
-async function clickupGet(path) {
-  const res = await fetch(CLICKUP_BASE + path, { headers: { Authorization: CLICKUP_API_KEY, "Content-Type": "application/json" } });
-  if (!res.ok) throw new Error("ClickUp API " + res.status);
-  return res.json();
-}
-
-async function clickupPut(path, body) {
-  const res = await fetch(CLICKUP_BASE + path, {
-    method: "PUT",
-    headers: { Authorization: CLICKUP_API_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) throw new Error("ClickUp API " + res.status);
   return res.json();
 }
 
@@ -69,32 +51,24 @@ function processRecording(recording, summarizations, transcript) {
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────
-app.get("/api/setup", (req, res) => {
-  const cfg = loadConfig();
-  res.json({ configured: cfg.configured, hasApiKey: !!cfg.pocketApiKey });
-});
+app.get("/api/setup", (req, res) => { const cfg = loadConfig(); res.json({ configured: cfg.configured, hasApiKey: !!cfg.pocketApiKey }); });
 app.post("/api/setup/verify-key", async (req, res) => {
   const { apiKey } = req.body;
   if (!apiKey || !apiKey.startsWith("pk_")) return res.status(400).json({ ok: false, error: "Key must start with pk_" });
-  try {
-    const data = await pocketGet("/public/recordings?limit=3", apiKey);
-    res.json({ ok: true, recordingCount: (data.recordings || []).length });
-  } catch { res.status(400).json({ ok: false, error: "Invalid API key" }); }
+  try { const data = await pocketGet("/public/recordings?limit=3", apiKey); res.json({ ok: true, recordingCount: (data.recordings || []).length }); }
+  catch { res.status(400).json({ ok: false, error: "Invalid API key" }); }
 });
 app.post("/api/setup/save", (req, res) => {
   const { apiKey } = req.body;
-  if (!apiKey || !apiKey.startsWith("pk_")) return res.status(400).json({ ok: false, error: "Invalid API key" });
-  saveConfig({ pocketApiKey: apiKey, configured: false });
-  res.json({ ok: true });
+  if (!apiKey || !apiKey.startsWith("pk_")) return res.status(400).json({ ok: false, error: "Invalid key" });
+  saveConfig({ pocketApiKey: apiKey, configured: false }); res.json({ ok: true });
 });
 app.post("/api/setup/verify-webhook", (req, res) => {
   const cfg = loadConfig(); const db = loadDB();
   if (db.calls.length > 0) { cfg.configured = true; saveConfig(cfg); return res.json({ ok: true }); }
-  res.json({ ok: false, message: "No webhooks received yet. Make a short test recording, then try again." });
+  res.json({ ok: false, message: "No webhooks received yet. Make a short test recording first." });
 });
-app.post("/api/setup/complete", (req, res) => {
-  const cfg = loadConfig(); cfg.configured = true; saveConfig(cfg); res.json({ ok: true });
-});
+app.post("/api/setup/complete", (req, res) => { const cfg = loadConfig(); cfg.configured = true; saveConfig(cfg); res.json({ ok: true }); });
 
 // ── Pocket data ───────────────────────────────────────────────────────
 app.get("/api/data", (req, res) => {
@@ -104,8 +78,7 @@ app.get("/api/data", (req, res) => {
 app.patch("/api/tasks/:id", (req, res) => {
   const db = loadDB(); const task = db.tasks.find(t => t.id === req.params.id);
   if (!task) return res.status(404).json({ error: "Not found" });
-  task.status = task.status === "done" ? "open" : "done";
-  if (task.status === "done") task.due = "Done";
+  task.status = task.status === "done" ? "open" : "done"; if (task.status === "done") task.due = "Done";
   saveDB(db); res.json(task);
 });
 app.post("/api/tasks", (req, res) => {
@@ -114,23 +87,19 @@ app.post("/api/tasks", (req, res) => {
   db.tasks.unshift(task); saveDB(db); res.json(task);
 });
 app.delete("/api/calls/:id", (req, res) => {
-  const db = loadDB();
-  db.calls = db.calls.filter(c => c.id !== req.params.id);
-  db.tasks = db.tasks.filter(t => t.recordingId !== req.params.id);
+  const db = loadDB(); db.calls = db.calls.filter(c => c.id !== req.params.id); db.tasks = db.tasks.filter(t => t.recordingId !== req.params.id);
   saveDB(db); res.json({ ok: true });
 });
 app.post("/api/sync", async (req, res) => {
-  const cfg = loadConfig();
-  if (!cfg.pocketApiKey) return res.status(400).json({ error: "Not configured" });
+  const cfg = loadConfig(); if (!cfg.pocketApiKey) return res.status(400).json({ error: "Not configured" });
   try {
-    const list = await pocketGet("/public/recordings?limit=10");
-    const recordings = list.recordings || list.data || [];
+    const list = await pocketGet("/public/recordings?limit=10"); const recordings = list.recordings || list.data || [];
     const db = loadDB(); let newCalls = 0, newTasks = 0;
     for (const rec of recordings) {
       if (db.calls.find(c => c.id === rec.id)) continue;
       try {
         const detail = await pocketGet("/public/recordings/" + rec.id + "?include=all");
-        const { call, tasks } = processRecording(detail.recording || detail.data || rec, detail.summarizations || detail.summarization, detail.transcript);
+        const { call, tasks } = processRecording(detail.recording || rec, detail.summarizations, detail.transcript);
         db.calls.unshift(call); db.tasks.unshift(...tasks); newCalls++; newTasks += tasks.length;
       } catch(e) { console.error("Failed " + rec.id + ": " + e.message); }
     }
@@ -138,19 +107,15 @@ app.post("/api/sync", async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.post("/api/sync/force", async (req, res) => {
-  const cfg = loadConfig();
-  if (!cfg.pocketApiKey) return res.status(400).json({ error: "Not configured" });
+  const cfg = loadConfig(); if (!cfg.pocketApiKey) return res.status(400).json({ error: "Not configured" });
   try {
-    const list = await pocketGet("/public/recordings?limit=20");
-    const recordings = list.recordings || list.data || [];
+    const list = await pocketGet("/public/recordings?limit=20"); const recordings = list.recordings || list.data || [];
     const db = loadDB(); db.calls = []; let count = 0;
     for (const rec of recordings) {
       try {
         const detail = await pocketGet("/public/recordings/" + rec.id + "?include=all");
-        const { call, tasks } = processRecording(detail.recording || detail.data || rec, detail.summarizations || detail.summarization, detail.transcript);
-        db.calls.push(call);
-        for (const task of tasks) { if (!db.tasks.find(t => t.id === task.id)) db.tasks.unshift(task); }
-        count++;
+        const { call, tasks } = processRecording(detail.recording || rec, detail.summarizations, detail.transcript);
+        db.calls.push(call); for (const task of tasks) { if (!db.tasks.find(t => t.id === task.id)) db.tasks.unshift(task); } count++;
       } catch(e) { console.error("Failed " + rec.id + ": " + e.message); }
     }
     saveDB(db); res.json({ message: "Re-synced " + count + " recordings with full summaries" });
@@ -158,98 +123,56 @@ app.post("/api/sync/force", async (req, res) => {
 });
 
 // ── ClickUp ───────────────────────────────────────────────────────────
-// GET /api/clickup/priority-tasks — fetch urgent+high priority tasks assigned to user
 app.get("/api/clickup/priority-tasks", async (req, res) => {
-  if (!CLICKUP_API_KEY) return res.status(400).json({ error: "CLICKUP_API_KEY not set" });
+  if (!CLICKUP_API_KEY) return res.status(400).json({ error: "CLICKUP_API_KEY not set in Railway environment" });
   try {
-    // Get the current user's ID first
     const userRes = await fetch(CLICKUP_BASE + "/user", { headers: { Authorization: CLICKUP_API_KEY } });
     const userData = await userRes.json();
     const userId = userData.user?.id;
-    if (!userId) return res.status(400).json({ error: "Could not get ClickUp user" });
+    if (!userId) return res.status(400).json({ error: "Could not get ClickUp user ID" });
 
-    // Fetch priority 1 (urgent) and 2 (high) tasks assigned to user across workspace
-    const params = new URLSearchParams({
-      assignees: userId,
-      include_closed: "false",
-      subtasks: "true",
-      "priority[]": "1",
-    });
-    const urgentRes = await fetch(CLICKUP_BASE + "/team/" + CLICKUP_TEAM_ID + "/task?" + params, {
-      headers: { Authorization: CLICKUP_API_KEY }
-    });
-    const urgentData = await urgentRes.json();
+    const [r1, r2] = await Promise.all([
+      fetch(`${CLICKUP_BASE}/team/${CLICKUP_TEAM_ID}/task?assignees[]=${userId}&include_closed=false&priority[]=1`, { headers: { Authorization: CLICKUP_API_KEY } }),
+      fetch(`${CLICKUP_BASE}/team/${CLICKUP_TEAM_ID}/task?assignees[]=${userId}&include_closed=false&priority[]=2`, { headers: { Authorization: CLICKUP_API_KEY } })
+    ]);
+    const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
 
-    const params2 = new URLSearchParams({
-      assignees: userId,
-      include_closed: "false",
-      subtasks: "true",
-      "priority[]": "2",
-    });
-    const highRes = await fetch(CLICKUP_BASE + "/team/" + CLICKUP_TEAM_ID + "/task?" + params2, {
-      headers: { Authorization: CLICKUP_API_KEY }
-    });
-    const highData = await highRes.json();
-
-    const urgent = (urgentData.tasks || []).map(t => ({ ...t, _priorityLabel: "urgent" }));
-    const high = (highData.tasks || []).map(t => ({ ...t, _priorityLabel: "high" }));
-    const allTasks = [...urgent, ...high].map(t => ({
-      id: t.id,
-      name: t.name,
-      status: t.status?.status || "unknown",
+    const tasks = [...(d1.tasks||[]).map(t=>({...t,_pl:"urgent"})), ...(d2.tasks||[]).map(t=>({...t,_pl:"high"}))].map(t => ({
+      id: t.id, name: t.name,
+      status: t.status?.status || "open",
       statusColor: t.status?.color || "#888",
-      priority: t._priorityLabel,
-      priorityColor: t._priorityLabel === "urgent" ? "#E85555" : "#F5A623",
-      dueDate: t.due_date ? new Date(parseInt(t.due_date)).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : null,
+      priority: t._pl,
+      priorityColor: t._pl === "urgent" ? "#DC2626" : "#D97706",
+      dueDate: t.due_date ? new Date(parseInt(t.due_date)).toLocaleDateString("en-GB", { day:"numeric", month:"short" }) : null,
       dueDateRaw: t.due_date,
       list: t.list?.name || "",
-      space: t.space?.id || "",
       url: t.url,
-      description: t.description || "",
     }));
-
-    res.json({ tasks: allTasks, userId });
-  } catch(e) {
-    console.error("ClickUp error:", e.message);
-    res.status(500).json({ error: e.message });
-  }
+    res.json({ tasks });
+  } catch(e) { console.error("ClickUp:", e.message); res.status(500).json({ error: e.message }); }
 });
 
-// PUT /api/clickup/tasks/:id/complete — mark a ClickUp task complete
 app.put("/api/clickup/tasks/:id/complete", async (req, res) => {
   if (!CLICKUP_API_KEY) return res.status(400).json({ error: "CLICKUP_API_KEY not set" });
   try {
-    const result = await clickupPut("/task/" + req.params.id, { status: "complete" });
-    res.json({ ok: true, task: result });
-  } catch(e) {
-    // Try "closed" status if "complete" fails
-    try {
-      const result2 = await clickupPut("/task/" + req.params.id, { status: "closed" });
-      res.json({ ok: true, task: result2 });
-    } catch(e2) {
-      res.status(500).json({ error: e2.message });
-    }
-  }
+    const r = await fetch(`${CLICKUP_BASE}/task/${req.params.id}`, { method: "PUT", headers: { Authorization: CLICKUP_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ status: "complete" }) });
+    if (r.ok) return res.json({ ok: true });
+    const r2 = await fetch(`${CLICKUP_BASE}/task/${req.params.id}`, { method: "PUT", headers: { Authorization: CLICKUP_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ status: "closed" }) });
+    res.json({ ok: r2.ok });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
-
-// ── Gmail via MCP proxy ───────────────────────────────────────────────
-// Gmail is handled client-side via the MCP connector in denise.html
-// These endpoints are just for ClickUp and Pocket
 
 // ── Webhook ───────────────────────────────────────────────────────────
 app.post("/webhook/pocket", (req, res) => {
-  let payload;
-  try { payload = JSON.parse(req.body.toString()); } catch { return res.status(400).json({ error: "Invalid JSON" }); }
+  let payload; try { payload = JSON.parse(req.body.toString()); } catch { return res.status(400).json({ error: "Invalid JSON" }); }
   const { event, recording, summarizations, transcript } = payload;
-  console.log("[webhook] " + event + " - " + (recording && recording.id));
+  console.log("[webhook] " + event + " - " + (recording?.id));
   if (event === "summary.completed" || event === "summary.regenerated") {
-    const db = loadDB();
-    const { call, tasks } = processRecording(recording, summarizations, transcript);
+    const db = loadDB(); const { call, tasks } = processRecording(recording, summarizations, transcript);
     const idx = db.calls.findIndex(c => c.id === call.id);
     if (idx >= 0) db.calls[idx] = call; else db.calls.unshift(call);
     for (const task of tasks) { if (!db.tasks.find(t => t.id === task.id)) db.tasks.unshift(task); }
     saveDB(db);
-    console.log("[webhook] Saved: " + call.title + " | bullets: " + call.bulletPoints.length + " | transcript: " + call.transcript.length + " chars");
   }
   if (event === "action_items.updated") {
     const db = loadDB();
@@ -260,20 +183,13 @@ app.post("/webhook/pocket", (req, res) => {
 });
 
 app.get("/webhook/pocket", (req, res) => res.json({ ok: true }));
-app.get("/api/clickup/debug", async (req, res) => {
-  if (!CLICKUP_API_KEY) return res.status(400).json({ error: "CLICKUP_API_KEY not set" });
-  try {
-    const userRes = await fetch(CLICKUP_BASE + "/user", { headers: { Authorization: CLICKUP_API_KEY } });
-    const userData = await userRes.json();
-    const userId = userData.user?.id;
-    const r = await fetch(CLICKUP_BASE + "/team/" + CLICKUP_TEAM_ID + "/task?assignees[]=" + userId + "&include_closed=false&page=0", {
-      headers: { Authorization: CLICKUP_API_KEY }
-    });
-    const d = await r.json();
-    const tasks = (d.tasks || []).map(t => ({ id: t.id, name: t.name, priorityId: t.priority?.id, priorityLabel: t.priority?.priority, status: t.status?.status, list: t.list?.name }));
-    res.json({ userId, totalTasks: tasks.length, tasks });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+app.get("/health", (req, res) => res.json({ ok: true }));
+
+// Serve denise.html at root
+app.get("/", (req, res) => {
+  const htmlPath = path.join(__dirname, "denise.html");
+  if (existsSync(htmlPath)) res.sendFile(htmlPath);
+  else res.status(404).send("denise.html not found — upload it to the repo alongside server.js");
 });
 
-app.get("/health", (req, res) => res.json({ ok: true }));
 app.listen(PORT, () => console.log("Denise backend on port " + PORT));
