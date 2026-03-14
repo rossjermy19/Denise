@@ -209,72 +209,73 @@ app.put("/api/clickup/tasks/:id/complete", async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Gmail via Atom feed ───────────────────────────────────────────────
+// ── Gmail via Anthropic API ──────────────────────────────────────────
 app.post("/api/gmail/fetch", async (req, res) => {
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
-  if (!user || !pass) return res.status(400).json({ error: "GMAIL_USER and GMAIL_APP_PASSWORD not set in Railway" });
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(400).json({ error: "ANTHROPIC_API_KEY not set in Railway" });
   try {
-    const creds = Buffer.from(user + ":" + pass).toString("base64");
-    // Fetch unread inbox (atom feed only returns unread messages)
-    const r = await fetch("https://mail.google.com/mail/feed/atom/inbox", {
-      headers: { Authorization: "Basic " + creds, Accept: "application/atom+xml" }
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "mcp-client-2025-04-04"
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 4000,
+        system: `You have access to Gmail for ross.jermy@moovparcel.co.uk via the Gmail MCP tool.
+List the 20 most recent emails from ALL labels/folders including sub-labels.
+Return ONLY valid JSON, no markdown, no explanation:
+{"emails":[{"id":"string","fromName":"string","fromEmail":"string","subject":"string","snippet":"string","date":"14 Mar","time":"14:32","unread":true,"needsReply":false,"replyReason":null}]}
+Set needsReply true if the email contains a question, request or requires action from Ross.`,
+        messages: [{ role: "user", content: "Fetch the 20 most recent emails and return as JSON." }],
+        mcp_servers: [{ type: "url", url: "https://gmail.mcp.claude.com/mcp", name: "gmail" }]
+      })
     });
-    if (!r.ok) return res.status(400).json({ error: "Gmail returned " + r.status + " — check credentials" });
-    const xml = await r.text();
 
-    // Parse entries from Atom XML
-    const entryMatches = xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g);
-    const entries = [];
-    for (const m of entryMatches) {
-      const entry = m[1];
-      const getTag = (tag) => { const rx = new RegExp("<" + tag + "[^>]*>([\\s\\S]*?)<\\/" + tag + ">"); const found = entry.match(rx); return found ? found[1].trim() : ""; };
-      const authorBlock = entry.match(/<author>([\s\S]*?)<\/author>/);
-      const fromName = authorBlock ? (authorBlock[1].match(/<name>([\s\S]*?)<\/name>/) || [])[1] || "" : "";
-      const fromEmail = authorBlock ? (authorBlock[1].match(/<email>([\s\S]*?)<\/email>/) || [])[1] || "" : "";
-      const issued = getTag("issued") || getTag("modified") || "";
-      const dt = issued ? new Date(issued) : new Date();
-      entries.push({
-        id: getTag("id"),
-        subject: getTag("title") || "(no subject)",
-        fromName: fromName.trim(),
-        fromEmail: fromEmail.trim(),
-        from: fromName.trim() + " <" + fromEmail.trim() + ">",
-        snippet: getTag("summary").slice(0, 120),
-        body: getTag("summary").slice(0, 400),
-        date: isNaN(dt.getTime()) ? "" : dt.toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-        time: isNaN(dt.getTime()) ? "" : dt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-        unread: true,
-        needsReply: false,
-        replyReason: null,
-      });
+    const data = await response.json();
+    if (data.error) {
+      console.error("Anthropic error:", data.error);
+      return res.status(400).json({ error: data.error.message || JSON.stringify(data.error) });
     }
 
-    // Use Claude Haiku to flag which emails need replies
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (apiKey && entries.length > 0) {
-      try {
-        const ctx = entries.map((e, i) => (i+1) + ". From: " + e.fromName + " | Subject: " + e.subject + " | Preview: " + e.snippet).join("\n");
-        const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-          body: JSON.stringify({
-            model: "claude-haiku-4-5-20251001",
-            max_tokens: 200,
-            system: "You analyse emails for Ross Jermy at Moov Parcel (UK shipping logistics). Return ONLY a JSON array of 1-based indexes of emails needing a reply — questions, requests, action required. Example: [1,3,5]. No other text.",
-            messages: [{ role: "user", content: "Which need a reply?\n" + ctx }]
-          })
-        });
-        const aiData = await aiRes.json();
-        const aiText = ((aiData.content || []).find(b => b.type === "text") || {}).text || "[]";
-        const match = aiText.match(/\[[\s\S]*?\]/);
-        const indexes = match ? JSON.parse(match[0]) : [];
-        indexes.forEach(idx => { if (entries[idx-1]) entries[idx-1].needsReply = true; });
-      } catch(e) { console.error("AI flagging error:", e.message); }
-    }
+    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return res.status(400).json({ error: "Could not parse response", raw: text.slice(0, 200) });
 
-    res.json({ emails: entries });
-  } catch(e) { console.error("Gmail feed error:", e.message); res.status(500).json({ error: e.message }); }
+    const parsed = JSON.parse(match[0]);
+    res.json({ emails: parsed.emails || [] });
+  } catch(e) {
+    console.error("Gmail error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/gmail/debug", async (req, res) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(400).json({ error: "No ANTHROPIC_API_KEY" });
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "mcp-client-2025-04-04"
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 500,
+        messages: [{ role: "user", content: "List the subject lines of my 5 most recent Gmail emails as plain text." }],
+        mcp_servers: [{ type: "url", url: "https://gmail.mcp.claude.com/mcp", name: "gmail" }]
+      })
+    });
+    const data = await response.json();
+    res.setHeader("Content-Type", "text/plain");
+    res.send(JSON.stringify(data, null, 2).slice(0, 3000));
+  } catch(e) { res.status(500).send(e.message); }
 });
 
 
@@ -303,7 +304,7 @@ app.get("/api/gmail/debug", async (req, res) => {
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) return res.status(400).json({ error: "No credentials" });
   const creds = Buffer.from(user + ":" + pass).toString("base64");
-  const r = await fetch("https://mail.google.com/mail/feed/atom/inbox", {
+  const r = await fetch("https://mail.google.com/mail/feed/atom", {
     headers: { Authorization: "Basic " + creds }
   });
   const xml = await r.text();
