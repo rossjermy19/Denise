@@ -209,7 +209,7 @@ const S={
   emailAlerts:[],alertsLoading:false,alertsGenerated:false,
   composingReply:null,replyDraft:'',
   cuTasks:[],cuLoading:false,cuCompleted:{},
-  messages:[{'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket and Gmail. Ask me what needs your attention today, or anything else."}],
+  messages:[{role:'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket and Gmail. Ask me what needs your attention today, or anything else."}],
   chatLoading:false,
   syncing:false,syncMsg:null,
   wizStep:1,backendUrl:localStorage.getItem('pa_api_base')||'',
