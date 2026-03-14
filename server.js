@@ -10,12 +10,13 @@ const POCKET_BASE = "https://public.heypocketai.com/api/v1";
 const CLICKUP_BASE = "https://api.clickup.com/api/v2";
 const CLICKUP_API_KEY = process.env.CLICKUP_API_KEY || "";
 const CLICKUP_TEAM_ID = "4663587";
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 
 const app = express();
 app.use(cors({ origin: "*", methods: ["GET","POST","PATCH","DELETE","PUT","OPTIONS"], allowedHeaders: ["Content-Type","Authorization"] }));
 app.options("*", cors());
 app.use("/webhook", express.raw({ type: "application/json" }));
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 app.use(express.static(__dirname));
 
 const DB_FILE = "./db.json";
@@ -83,8 +84,8 @@ app.patch("/api/tasks/:id", (req, res) => {
 });
 app.post("/api/tasks", (req, res) => {
   const db = loadDB();
-  const task = { id: "manual_" + Date.now(), text: req.body.text, due: req.body.due || "Today", status: "open", source: "manual" };
-  db.tasks.unshift(task); saveDB(db); res.json(task);
+  db.tasks.unshift({ id: "manual_" + Date.now(), text: req.body.text, due: req.body.due || "Today", status: "open", source: "manual" });
+  saveDB(db); res.json(db.tasks[0]);
 });
 app.delete("/api/calls/:id", (req, res) => {
   const db = loadDB(); db.calls = db.calls.filter(c => c.id !== req.params.id); db.tasks = db.tasks.filter(t => t.recordingId !== req.params.id);
@@ -93,7 +94,9 @@ app.delete("/api/calls/:id", (req, res) => {
 app.post("/api/sync", async (req, res) => {
   const cfg = loadConfig(); if (!cfg.pocketApiKey) return res.status(400).json({ error: "Not configured" });
   try {
-    const list = await pocketGet("/public/recordings?limit=10"); const recordings = list.recordings || list.data || [];
+    // Get actual count from Pocket first
+    const list = await pocketGet("/public/recordings?limit=50");
+    const recordings = (list.recordings || list.data || []).slice(0, 20);
     const db = loadDB(); let newCalls = 0, newTasks = 0;
     for (const rec of recordings) {
       if (db.calls.find(c => c.id === rec.id)) continue;
@@ -109,57 +112,102 @@ app.post("/api/sync", async (req, res) => {
 app.post("/api/sync/force", async (req, res) => {
   const cfg = loadConfig(); if (!cfg.pocketApiKey) return res.status(400).json({ error: "Not configured" });
   try {
-    const list = await pocketGet("/public/recordings?limit=20"); const recordings = list.recordings || list.data || [];
+    const list = await pocketGet("/public/recordings?limit=50");
+    const recordings = list.recordings || list.data || [];
     const db = loadDB(); db.calls = []; let count = 0;
     for (const rec of recordings) {
       try {
         const detail = await pocketGet("/public/recordings/" + rec.id + "?include=all");
         const { call, tasks } = processRecording(detail.recording || rec, detail.summarizations, detail.transcript);
-        db.calls.push(call); for (const task of tasks) { if (!db.tasks.find(t => t.id === task.id)) db.tasks.unshift(task); } count++;
+        db.calls.push(call); for (const t of tasks) { if (!db.tasks.find(x => x.id === t.id)) db.tasks.unshift(t); } count++;
       } catch(e) { console.error("Failed " + rec.id + ": " + e.message); }
     }
     saveDB(db); res.json({ message: "Re-synced " + count + " recordings with full summaries" });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── ClickUp ───────────────────────────────────────────────────────────
+// ── ClickUp — assigned to me, priority 1+2 only ───────────────────────
 app.get("/api/clickup/priority-tasks", async (req, res) => {
-  if (!CLICKUP_API_KEY) return res.status(400).json({ error: "CLICKUP_API_KEY not set in Railway environment" });
+  if (!CLICKUP_API_KEY) return res.status(400).json({ error: "CLICKUP_API_KEY not set in Railway" });
   try {
+    // Get current user
     const userRes = await fetch(CLICKUP_BASE + "/user", { headers: { Authorization: CLICKUP_API_KEY } });
     const userData = await userRes.json();
     const userId = userData.user?.id;
-    if (!userId) return res.status(400).json({ error: "Could not get ClickUp user ID" });
+    if (!userId) {
+      console.error("ClickUp user response:", JSON.stringify(userData).slice(0, 200));
+      return res.status(400).json({ error: "Could not get ClickUp user ID. Check API key is valid." });
+    }
+    console.log("ClickUp userId:", userId);
 
+    // Fetch urgent + high priority, assigned to this user only
+    const headers = { Authorization: CLICKUP_API_KEY };
     const [r1, r2] = await Promise.all([
-      fetch(`${CLICKUP_BASE}/team/${CLICKUP_TEAM_ID}/task?assignees[]=${userId}&include_closed=false&priority[]=1`, { headers: { Authorization: CLICKUP_API_KEY } }),
-      fetch(`${CLICKUP_BASE}/team/${CLICKUP_TEAM_ID}/task?assignees[]=${userId}&include_closed=false&priority[]=2`, { headers: { Authorization: CLICKUP_API_KEY } })
+      fetch(`${CLICKUP_BASE}/team/${CLICKUP_TEAM_ID}/task?assignees%5B%5D=${userId}&include_closed=false&priority%5B%5D=1`, { headers }),
+      fetch(`${CLICKUP_BASE}/team/${CLICKUP_TEAM_ID}/task?assignees%5B%5D=${userId}&include_closed=false&priority%5B%5D=2`, { headers })
     ]);
     const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+    console.log("Urgent tasks:", d1.tasks?.length, "High tasks:", d2.tasks?.length);
 
-    const tasks = [...(d1.tasks||[]).map(t=>({...t,_pl:"urgent"})), ...(d2.tasks||[]).map(t=>({...t,_pl:"high"}))].map(t => ({
-      id: t.id, name: t.name,
+    const tasks = [
+      ...(d1.tasks || []).map(t => ({ ...t, _pl: "urgent" })),
+      ...(d2.tasks || []).map(t => ({ ...t, _pl: "high" }))
+    ].map(t => ({
+      id: t.id,
+      name: t.name,
       status: t.status?.status || "open",
       statusColor: t.status?.color || "#888",
       priority: t._pl,
       priorityColor: t._pl === "urgent" ? "#DC2626" : "#D97706",
-      dueDate: t.due_date ? new Date(parseInt(t.due_date)).toLocaleDateString("en-GB", { day:"numeric", month:"short" }) : null,
+      dueDate: t.due_date ? new Date(parseInt(t.due_date)).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : null,
       dueDateRaw: t.due_date,
       list: t.list?.name || "",
       url: t.url,
     }));
-    res.json({ tasks });
-  } catch(e) { console.error("ClickUp:", e.message); res.status(500).json({ error: e.message }); }
+    res.json({ tasks, userId });
+  } catch(e) { console.error("ClickUp error:", e.message); res.status(500).json({ error: e.message }); }
 });
 
 app.put("/api/clickup/tasks/:id/complete", async (req, res) => {
   if (!CLICKUP_API_KEY) return res.status(400).json({ error: "CLICKUP_API_KEY not set" });
   try {
-    const r = await fetch(`${CLICKUP_BASE}/task/${req.params.id}`, { method: "PUT", headers: { Authorization: CLICKUP_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ status: "complete" }) });
-    if (r.ok) return res.json({ ok: true });
-    const r2 = await fetch(`${CLICKUP_BASE}/task/${req.params.id}`, { method: "PUT", headers: { Authorization: CLICKUP_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ status: "closed" }) });
-    res.json({ ok: r2.ok });
+    // Try "complete" first, then "closed"
+    for (const status of ["complete", "closed"]) {
+      const r = await fetch(`${CLICKUP_BASE}/task/${req.params.id}`, { method: "PUT", headers: { Authorization: CLICKUP_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+      if (r.ok) return res.json({ ok: true });
+    }
+    res.status(400).json({ ok: false, error: "Could not mark complete" });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Gmail proxy — route through backend to avoid CORS ────────────────
+app.post("/api/gmail/fetch", async (req, res) => {
+  const apiKey = ANTHROPIC_API_KEY || req.headers["x-anthropic-key"];
+  if (!apiKey) return res.status(400).json({ error: "No Anthropic API key configured" });
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-beta": "mcp-client-2025-04-04" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4000,
+        system: `You have access to Gmail for ross.jermy@moovparcel.co.uk via the Gmail MCP tool.
+Fetch the 20 most recent inbox emails. For each email determine if it NEEDS_REPLY (direct questions, requests for action, client/supplier emails awaiting response).
+Return ONLY valid JSON with NO other text, NO markdown, NO backticks:
+{"emails":[{"id":"string","from":"Full Name <email>","fromName":"Full Name","fromEmail":"email","subject":"subject","snippet":"first 120 chars","body":"plain text up to 400 chars","date":"14 Mar","time":"14:32","unread":true,"needsReply":true,"replyReason":"short reason or null"}]}`,
+        messages: [{ role: "user", content: "Fetch the 20 most recent emails from the Gmail inbox and return as JSON." }],
+        mcp_servers: [{ type: "url", url: "https://gmail.mcp.claude.com/mcp", name: "gmail" }]
+      })
+    });
+    const data = await response.json();
+    if (data.error) return res.status(400).json({ error: data.error.message || "Anthropic API error" });
+    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+    const clean = text.replace(/```json|```/g, "").trim();
+    const match = clean.match(/\{[\s\S]*\}/);
+    if (!match) return res.status(400).json({ error: "Could not parse Gmail response", raw: clean.slice(0, 200) });
+    const parsed = JSON.parse(match[0]);
+    res.json(parsed);
+  } catch(e) { console.error("Gmail proxy error:", e.message); res.status(500).json({ error: e.message }); }
 });
 
 // ── Webhook ───────────────────────────────────────────────────────────
@@ -172,11 +220,11 @@ app.post("/webhook/pocket", (req, res) => {
     const idx = db.calls.findIndex(c => c.id === call.id);
     if (idx >= 0) db.calls[idx] = call; else db.calls.unshift(call);
     for (const task of tasks) { if (!db.tasks.find(t => t.id === task.id)) db.tasks.unshift(task); }
-    saveDB(db);
+    saveDB(db); console.log("[webhook] Saved:", call.title, "| bullets:", call.bulletPoints.length);
   }
   if (event === "action_items.updated") {
     const db = loadDB();
-    for (const item of (payload.actionItems || [])) { const task = db.tasks.find(t => t.id === item.id); if (task) task.status = item.isCompleted ? "done" : "open"; }
+    for (const item of (payload.actionItems || [])) { const t = db.tasks.find(t => t.id === item.id); if (t) t.status = item.isCompleted ? "done" : "open"; }
     saveDB(db);
   }
   res.json({ ok: true });
@@ -184,8 +232,6 @@ app.post("/webhook/pocket", (req, res) => {
 
 app.get("/webhook/pocket", (req, res) => res.json({ ok: true }));
 app.get("/health", (req, res) => res.json({ ok: true }));
-
-// Serve denise.html at root
 app.get("/", (req, res) => {
   const htmlPath = path.join(__dirname, "denise.html");
   if (existsSync(htmlPath)) res.sendFile(htmlPath);

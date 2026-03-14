@@ -201,7 +201,7 @@ html,body { height:100%; background:var(--bg); color:var(--text); font-family:va
 <body>
 <div id="app"></div>
 <script>
-const CLICKUP_TOKEN='';
+const CLICKUP_TOKEN='pk_44548556_MU5ROGG57WK8XKY9B6MFXV22UEW9D3ZV';
 const CLICKUP_TEAM='4663587';
 const CLICKUP_USER='44548556';
 
@@ -245,7 +245,7 @@ async function fetchEmails(){
   try{
     const text=await callClaudeMCP(
       'Use the Gmail MCP tool to fetch the user\'s inbox. Return ONLY a valid JSON array (no markdown, no backticks, no explanation) of the 20 most recent emails with these exact fields: id (string), subject (string), from_name (string), from_email (string), date (ISO string), snippet (string, max 100 chars), is_unread (boolean). Sort newest first.',
-      'Fetch 20 most recent Gmail inbox messages for ross.jermy@moovparcel.co.uk. Return JSON array only, no other text.',
+      'Fetch my 20 most recent Gmail inbox messages. Return JSON array only, no other text.',
       [{type:'url',url:'https://gmail.mcp.claude.com/mcp',name:'gmail'}]
     );
     const clean=text.replace(/```json|```/g,'').trim();
@@ -301,10 +301,9 @@ async function draftReply(email){
 async function fetchClickUp(){
   S.cuLoading=true;render();
   try{
-    const res=await fetch(`${API()}/api/clickup/priority-tasks`);
+    const res=await fetch(`https://api.clickup.com/api/v2/team/${CLICKUP_TEAM}/task?assignees[]=${CLICKUP_USER}&include_closed=false&subtasks=true&page=0&order_by=due_date`,{headers:{Authorization:CLICKUP_TOKEN}});
     const d=await res.json();
-    if(d.error)throw new Error(d.error);
-    S.cuTasks=d.tasks||[];
+    S.cuTasks=(d.tasks||[]).slice(0,60);
   }catch(e){console.error('ClickUp:',e);S.cuTasks=[];}
   S.cuLoading=false;render();
 }
@@ -313,9 +312,8 @@ async function completeClickUpTask(taskId,taskName){
   if(!confirm(`Mark "${taskName}" as complete in ClickUp?`))return;
   S.cuCompleted[taskId]=true;render();
   try{
-    const cr=await fetch(`${API()}/api/clickup/tasks/${taskId}/complete`,{method:'PUT'});
-    const cd=await cr.json();
-    if(cd.ok)setTimeout(()=>{S.cuTasks=S.cuTasks.filter(t=>t.id!==taskId);render();},500);
+    await fetch(`https://api.clickup.com/api/v2/task/${taskId}`,{method:'PUT',headers:{Authorization:CLICKUP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({status:'complete'})});
+    setTimeout(()=>{S.cuTasks=S.cuTasks.filter(t=>t.id!==taskId);render();},500);
   }catch(e){delete S.cuCompleted[taskId];render();}
 }
 
