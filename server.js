@@ -298,6 +298,21 @@ app.post("/webhook/pocket", (req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/api/gmail/debug", async (req, res) => {
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) return res.status(400).json({ error: "No credentials" });
+  const creds = Buffer.from(user + ":" + pass).toString("base64");
+  const r = await fetch("https://mail.google.com/mail/feed/atom/inbox", {
+    headers: { Authorization: "Basic " + creds }
+  });
+  const xml = await r.text();
+  res.setHeader('Content-Type', 'text/plain');
+  res.send(`Status: ${r.status}
+
+${xml.slice(0, 2000)}`);
+});
+
 app.get("/webhook/pocket", (req, res) => res.json({ ok: true }));
 app.get("/health", (req, res) => res.json({ ok: true }));
 app.get("/", (req, res) => {
