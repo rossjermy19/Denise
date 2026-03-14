@@ -260,7 +260,7 @@ async function fetchEmails(){
     });
 
     // Fetch message list
-    const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=in:inbox', {
+    const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20', {
       headers: { Authorization: 'Bearer ' + token }
     });
     const listData = await listRes.json();
