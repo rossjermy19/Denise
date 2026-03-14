@@ -216,7 +216,8 @@ app.post("/api/gmail/fetch", async (req, res) => {
   if (!user || !pass) return res.status(400).json({ error: "GMAIL_USER and GMAIL_APP_PASSWORD not set in Railway" });
   try {
     const creds = Buffer.from(user + ":" + pass).toString("base64");
-    const r = await fetch("https://mail.google.com/mail/feed/atom", {
+    // Fetch unread inbox (atom feed only returns unread messages)
+    const r = await fetch("https://mail.google.com/mail/feed/atom/inbox", {
       headers: { Authorization: "Basic " + creds, Accept: "application/atom+xml" }
     });
     if (!r.ok) return res.status(400).json({ error: "Gmail returned " + r.status + " — check credentials" });

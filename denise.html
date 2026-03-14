@@ -422,7 +422,7 @@ function renderDash(){
     <div class="nav">
       <button class="nav-btn ${S.tab==='dashboard'?'active':''}" data-tab="dashboard">DASHBOARD</button>
       <button class="nav-btn ${S.tab==='gmail'?'active':''}" data-tab="gmail">GMAIL${unread>0?'<span class="bdot"></span>':''}</button>
-      <button class="nav-btn ${S.tab==='clickup'?'active':''}" data-tab="clickup">CLICKUP</button>
+      
       <button class="nav-btn ${S.tab==='pocket'?'active':''}" data-tab="pocket">RECORDINGS</button>
       <button class="nav-btn ${S.tab==='pa'?'active':''}" data-tab="pa">CHAT WITH DENISE</button>
     </div>
@@ -460,72 +460,7 @@ function renderDashTab(overdue,unread){
       ${S.tasks.slice(0,7).map(t=>{const done=t.status==='done',ov=t.status==='overdue';return`<div class="trow ${done?'done':''}" data-toggle="${esc(t.id)}"><div class="tchk ${done?'done':''}">${done?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><span class="ttxt ${done?'done':''}">${esc(t.text)}</span>${t.source==='pocket'?'<span class="tsrc">POCKET</span>':''}<span class="tdue ${ov?'ov':''}">${esc(t.due)}</span></div>`;}).join('')}
       <div class="addrow"><input class="addinp" id="newTask" placeholder="Add a task..." /><button class="addbtn" id="btnAddTask">+ Add</button></div>
     </div>
-    <div class="card">
-      <div class="chdr"><span class="ctitle">ClickUp inbox</span><span class="bdg bw">${S.cuTasks.length} tasks</span></div>
-      ${S.cuLoading?`<div class="ldr"><div class="spinner"></div>Loading...</div>`:S.cuTasks.length===0?`<div style="font-size:13px;color:var(--muted)">No tasks.<br><button style="margin-top:8px;padding:7px 14px;border-radius:var(--r);border:1px solid var(--border);background:transparent;color:var(--accent);font-size:12px;font-family:var(--fd);cursor:pointer" id="btnLoadCU">Load ClickUp</button></div>`:
-      S.cuTasks.slice(0,6).map(t=>{const done=S.cuCompleted[t.id];const pri=t.priority?.priority||'normal';return`<div class="curow"><div class="cuchk ${done?'done':''}" data-cu="${esc(t.id)}" data-cuname="${esc(t.name)}">${done?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><div class="cuinfo"><div class="cuname ${done?'done':''}">${esc(t.name)}</div><div class="cumeta">${esc(t.list?.name||'')}${t.due_date?` · Due ${new Date(parseInt(t.due_date)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:''}</div></div><span class="cupri cp${pri[0]}">${pri}</span></div>`;}).join('')}
-    </div>
-    <div class="card">
-      <div class="chdr"><span class="ctitle">Recent emails</span><span class="bdg bt">${S.emails.filter(e=>e.is_unread).length} unread</span></div>
-      ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading Gmail...</div>`:S.emails.length===0?`<div style="font-size:13px;color:var(--muted)">No emails loaded.<br><button style="margin-top:8px;padding:7px 14px;border-radius:var(--r);border:1px solid var(--border);background:transparent;color:var(--accent);font-size:12px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail">Load Gmail</button></div>`:
-      S.emails.slice(0,6).map((e,i)=>`<div class="erow ${e.is_unread?'unread':''}" data-email="${i}" style="padding:6px 8px"><div class="edot ${e.is_unread?'':'read'}"></div><div class="einfo"><div class="esender">${esc(e.from_name||e.from_email)}</div><div class="esubj">${esc(e.subject)}</div></div><div class="etime">${esc(fmtEmailDate(e.date))}</div></div>`).join('')}
-    </div>
-  </div>`;
-}
-
-function renderGmailTab(){
-  const sel=S.selectedEmail;
-  return `<div style="display:grid;grid-template-columns:${sel?'1fr 1.5fr':'1fr'};gap:14px;align-items:start">
-  <div class="card">
-    <div class="chdr"><span class="ctitle">Inbox</span><div style="display:flex;gap:8px;align-items:center"><span class="bdg bt">${S.emails.filter(e=>e.is_unread).length} unread</span><button style="padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--accent);font-size:11px;font-family:var(--fd);cursor:pointer" id="btnRefreshEmail">↻</button></div></div>
-    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading your inbox...</div>`:S.emails.length===0?`<div style="font-size:13px;color:var(--muted);padding:8px 0">No emails loaded.<br><br><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Load Gmail inbox</button></div>`:
-    S.emails.map((e,i)=>`<div class="erow ${e.is_unread?'unread':''} ${sel&&S.selectedEmailIdx===i?'sel':''}" data-email="${i}"><div class="edot ${e.is_unread?'':'read'}"></div><div class="einfo"><div class="esender">${esc(e.from_name||e.from_email)}</div><div class="esubj">${esc(e.subject)}</div><div class="eprev">${esc(e.snippet)}</div></div><div class="etime">${esc(fmtEmailDate(e.date))}</div></div>`).join('')}
-  </div>
-  ${sel?`<div>
-    <div class="edetail">
-      <div class="esubject">${esc(sel.subject)}</div>
-      <div class="emeta">From: ${esc(sel.from_name||sel.from_email)}${sel.from_email&&sel.from_name?` &lt;${esc(sel.from_email)}&gt;`:''}<br>${sel.date?`Date: ${new Date(sel.date).toLocaleString('en-GB')}`:''}
-      </div>
-      ${sel.bodyLoading?`<div class="ldr"><div class="spinner"></div>Loading email...</div>`:`<div class="ebody">${esc(sel.body||sel.snippet||'')}</div>`}
-      <div class="eactions">
-        <button class="ebtn pri" id="btnDraftReply">✏ Draft reply with Denise</button>
-        <button class="ebtn" id="btnCloseEmail">✕ Close</button>
-      </div>
-    </div>
-    ${S.composingReply?.id===sel.id?`<div class="compose"><div class="comphdr">Reply to: ${esc(sel.from_name||sel.from_email)}</div><textarea class="compa" id="replyArea">${esc(S.replyDraft)}</textarea><div class="compftr"><button class="ebtn" id="btnCancelReply">Cancel</button><button class="ebtn pri" id="btnCopyReply">Copy reply text</button></div></div>`:''}
-  </div>`:''}
-  </div>`;
-}
-
-function renderClickUpTab(){
-  const hi=S.cuTasks.filter(t=>t.priority?.priority==='urgent'||t.priority?.priority==='high');
-  const lo=S.cuTasks.filter(t=>t.priority?.priority!=='urgent'&&t.priority?.priority!=='high');
-  return `<div>
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-    <div><div style="font-size:18px;font-weight:600">ClickUp Inbox</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Tasks assigned to you · ${S.cuTasks.length} total</div></div>
-    <button style="padding:9px 18px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);color:var(--accent);font-size:12px;font-family:var(--fd);cursor:pointer;box-shadow:var(--shadow)" id="btnRefreshCU">↻ Refresh</button>
-  </div>
-  ${S.cuLoading?`<div class="card"><div class="ldr"><div class="spinner"></div>Loading your ClickUp tasks...</div></div>`:S.cuTasks.length===0?`<div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--muted);margin-bottom:16px">No tasks loaded yet.</div><button style="padding:10px 20px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadCU2">Load my ClickUp tasks</button></div>`:
-  `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-    <div class="card"><div class="chdr"><span class="ctitle">High priority</span><span class="bdg bd">${hi.length}</span></div>
-    ${hi.length===0?'<div style="font-size:13px;color:var(--muted)">No urgent tasks — nice!</div>':''}
-    ${hi.map(t=>`<div class="curow"><div class="cuchk ${S.cuCompleted[t.id]?'done':''}" data-cu="${esc(t.id)}" data-cuname="${esc(t.name)}">${S.cuCompleted[t.id]?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><div class="cuinfo"><div class="cuname">${esc(t.name)}</div><div class="cumeta">${esc(t.list?.name||'')}${t.due_date?` · Due ${new Date(parseInt(t.due_date)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:''}</div></div><span class="custa">${esc(t.status?.status||'open')}</span></div>`).join('')}
-    </div>
-    <div class="card"><div class="chdr"><span class="ctitle">Normal &amp; low</span><span class="bdg ba">${lo.length}</span></div>
-    ${lo.length===0?'<div style="font-size:13px;color:var(--muted)">No tasks.</div>':''}
-    ${lo.map(t=>`<div class="curow"><div class="cuchk ${S.cuCompleted[t.id]?'done':''}" data-cu="${esc(t.id)}" data-cuname="${esc(t.name)}">${S.cuCompleted[t.id]?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><div class="cuinfo"><div class="cuname">${esc(t.name)}</div><div class="cumeta">${esc(t.list?.name||'')}${t.due_date?` · Due ${new Date(parseInt(t.due_date)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:''}</div></div><span class="custa">${esc(t.status?.status||'open')}</span></div>`).join('')}
-    </div>
-  </div>`}
-  </div>`;
-}
-
-function renderPocketTab(overdue){
-  return `<div class="g2">
-  <div class="card">
-    <div class="chdr"><span class="ctitle">Task board</span><span class="bdg bd">${overdue||0} overdue</span></div>
-    ${S.tasks.length===0?'<div style="font-size:13px;color:var(--muted)">No tasks yet.</div>':''}
-    ${S.tasks.slice(0,12).map(t=>{const done=t.status==='done',ov=t.status==='overdue';return`<div class="trow ${done?'done':''}" data-toggle="${esc(t.id)}"><div class="tchk ${done?'done':''}">${done?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><span class="ttxt ${done?'done':''}">${esc(t.text)}</span>${t.source==='pocket'?'<span class="tsrc">POCKET</span>':''}<span class="tdue ${ov?'ov':''}">${esc(t.due)}</span></div>`;}).join('')}
-    <div class="addrow"><input class="addinp" id="newTask2" placeholder="Add a task..." /><button class="addbtn" id="btnAddTask2">+ Add</button></div>
+    
   </div>
   <div class="card">
     <div class="chdr"><span class="ctitle">Recordings</span><span class="bdg bp">${S.calls.length} total</span></div>
