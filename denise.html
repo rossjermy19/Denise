@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Denise — Your PA</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #F5F4F0; --surface: #FFFFFF; --surface2: #EEECE8; --border: #DDD9D0; --border-light: #E8E5DF;
+  --text: #1A1916; --muted: #7A756A; --dim: #B0AA9E;
+  --accent: #2563EB; --accent-dim: #DBEAFE; --accent-text: #1D4ED8;
+  --success: #16A34A; --success-dim: #DCFCE7; --success-text: #15803D;
+  --warn: #D97706; --warn-dim: #FEF3C7; --warn-text: #B45309;
+  --danger: #DC2626; --danger-dim: #FEE2E2; --danger-text: #B91C1C;
+  --purple: #7C3AED; --purple-dim: #EDE9FE; --purple-text: #6D28D9;
+  --teal: #0891B2; --teal-dim: #CFFAFE; --teal-text: #0E7490;
+  --fd: 'DM Mono','Courier New',monospace; --fb: 'DM Sans','Segoe UI',sans-serif;
+  --r: 10px; --rl: 14px; --shadow: 0 1px 3px rgba(0,0,0,0.08); --shadow-md: 0 4px 6px rgba(0,0,0,0.06);
+}
+html,body { height:100%; background:var(--bg); color:var(--text); font-family:var(--fb); font-size:15px; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+@keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+@keyframes spin { to{transform:rotate(360deg)} }
+::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.header { padding:14px 28px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; background:var(--surface); position:sticky; top:0; z-index:10; box-shadow:var(--shadow); }
+.logo { font-family:var(--fd); font-size:15px; font-weight:500; letter-spacing:.06em; }
+.logo span { color:var(--dim); }
+.dateline { font-family:var(--fd); font-size:10px; color:var(--dim); letter-spacing:.06em; margin-top:2px; }
+.nav { display:flex; gap:2px; background:var(--surface2); padding:3px; border-radius:var(--r); border:1px solid var(--border); }
+.nav-btn { padding:7px 16px; border-radius:8px; border:none; cursor:pointer; font-size:12px; font-family:var(--fd); letter-spacing:.05em; background:transparent; color:var(--muted); transition:all .15s; font-weight:500; position:relative; }
+.nav-btn.active { background:var(--surface); color:var(--accent); box-shadow:var(--shadow); }
+.nav-btn .bdot { position:absolute; top:5px; right:5px; width:7px; height:7px; border-radius:50%; background:var(--danger); border:1.5px solid var(--surface2); }
+.hdr-right { display:flex; align-items:center; gap:12px; }
+.hbtn { padding:8px 16px; border-radius:var(--r); border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:11px; font-family:var(--fd); cursor:pointer; letter-spacing:.05em; font-weight:500; box-shadow:var(--shadow); transition:all .15s; }
+.hbtn:hover { border-color:var(--accent); color:var(--accent); }
+.hbtn:disabled { color:var(--muted); cursor:not-allowed; }
+.live { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--success); font-family:var(--fd); font-weight:500; }
+.ldot { width:7px; height:7px; border-radius:50%; background:var(--success); animation:pulse 2s infinite; }
+.rbtn { padding:5px 10px; border-radius:7px; border:1px solid var(--border); background:transparent; color:var(--dim); font-size:10px; font-family:var(--fd); cursor:pointer; }
+.smsg { font-size:11px; font-family:var(--fd); color:var(--success); font-weight:500; }
+.body { padding:22px 28px; max-width:1200px; margin:0 auto; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--rl); padding:18px 22px; box-shadow:var(--shadow); }
+.chdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.ctitle { font-size:10px; font-family:var(--fd); color:var(--muted); letter-spacing:.12em; text-transform:uppercase; font-weight:500; }
+.bdg { font-size:10px; font-family:var(--fd); padding:3px 9px; border-radius:5px; font-weight:500; }
+.bd { background:var(--danger-dim); color:var(--danger-text); }
+.bp { background:var(--purple-dim); color:var(--purple-text); }
+.bs { background:var(--success-dim); color:var(--success-text); }
+.bw { background:var(--warn-dim); color:var(--warn-text); }
+.ba { background:var(--accent-dim); color:var(--accent-text); }
+.bt { background:var(--teal-dim); color:var(--teal-text); }
+.stats { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
+.stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--rl); padding:16px 18px; box-shadow:var(--shadow); }
+.slbl { font-size:11px; font-family:var(--fd); color:var(--muted); letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px; font-weight:500; }
+.sval { font-size:32px; font-weight:600; font-family:var(--fd); line-height:1; }
+.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+.g2 { display:grid; grid-template-columns:1.1fr 1fr; gap:14px; }
+.spinner { width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; display:inline-block; }
+.ldr { display:flex; align-items:center; gap:10px; padding:16px 0; color:var(--muted); font-size:13px; }
+/* alerts */
+.arow { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid var(--border-light); animation:fadeIn .3s; }
+.arow:last-child{border-bottom:none;}
+.aico { width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; }
+.atitle { font-size:13px; font-weight:500; line-height:1.3; }
+.asub { font-size:11px; color:var(--muted); margin-top:2px; line-height:1.4; }
+.aact { font-size:11px; font-family:var(--fd); padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; margin-top:4px; transition:all .15s; }
+.aact:hover { border-color:var(--accent); color:var(--accent); }
+/* emails */
+.erow { display:flex; align-items:flex-start; gap:10px; padding:9px 8px; border-radius:var(--r); cursor:pointer; border:1px solid transparent; transition:all .15s; }
+.erow:hover { background:var(--surface2); }
+.erow.sel { background:var(--accent-dim); border-color:rgba(37,99,235,.2); }
+.erow.unread .esender, .erow.unread .esubj { font-weight:600; }
+.edot { width:8px; height:8px; border-radius:50%; background:var(--accent); flex-shrink:0; margin-top:5px; }
+.edot.read { background:transparent; border:1.5px solid var(--dim); }
+.einfo { flex:1; min-width:0; }
+.esender { font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.esubj { font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+.eprev { font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+.etime { font-size:10px; font-family:var(--fd); color:var(--dim); white-space:nowrap; flex-shrink:0; }
+.edetail { background:var(--bg); border:1px solid var(--border); border-radius:var(--r); padding:16px; margin-top:8px; }
+.esubject { font-size:16px; font-weight:600; margin-bottom:6px; }
+.emeta { font-size:12px; color:var(--muted); line-height:1.6; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--border-light); }
+.ebody { font-size:13px; line-height:1.7; color:var(--text); white-space:pre-wrap; word-break:break-word; max-height:300px; overflow-y:auto; }
+.eactions { display:flex; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-light); }
+.ebtn { padding:7px 14px; border-radius:var(--r); border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px; font-family:var(--fd); cursor:pointer; transition:all .15s; font-weight:500; }
+.ebtn.pri { background:var(--accent); border-color:var(--accent); color:#fff; }
+.ebtn:hover:not(.pri) { border-color:var(--accent); color:var(--accent); }
+/* clickup */
+.curow { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--border-light); }
+.curow:last-child{border-bottom:none;}
+.cuchk { width:16px; height:16px; border-radius:4px; flex-shrink:0; border:1.5px solid var(--border); background:var(--surface2); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s; }
+.cuchk:hover { border-color:var(--success); }
+.cuchk.done { background:var(--success); border-color:var(--success); }
+.cuinfo { flex:1; min-width:0; }
+.cuname { font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cuname.done { text-decoration:line-through; color:var(--muted); }
+.cumeta { font-size:11px; color:var(--muted); margin-top:1px; }
+.cupri { font-size:10px; font-family:var(--fd); padding:2px 7px; border-radius:4px; font-weight:500; white-space:nowrap; }
+.cpu { background:#FEE2E2; color:#991B1B; }
+.cph { background:#FEF3C7; color:#92400E; }
+.cpn { background:#DBEAFE; color:#1E40AF; }
+.cpl { background:#F3F4F6; color:#6B7280; }
+.custa { font-size:10px; font-family:var(--fd); padding:2px 7px; border-radius:4px; background:var(--surface2); color:var(--muted); white-space:nowrap; }
+/* pocket tasks */
+.trow { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--border-light); cursor:pointer; transition:opacity .2s; }
+.trow:last-of-type{border-bottom:none;}
+.trow.done{opacity:.45;}
+.tchk { width:16px; height:16px; border-radius:4px; flex-shrink:0; border:1.5px solid var(--border); background:var(--surface2); display:flex; align-items:center; justify-content:center; transition:all .15s; }
+.tchk.done{background:var(--success);border-color:var(--success);}
+.ttxt { flex:1; font-size:13px; color:var(--text); }
+.ttxt.done { text-decoration:line-through; color:var(--muted); }
+.tsrc { font-size:9px; font-family:var(--fd); color:var(--purple); background:var(--purple-dim); padding:2px 6px; border-radius:4px; }
+.tdue { font-size:10px; font-family:var(--fd); color:var(--dim); }
+.tdue.ov { color:var(--danger); font-weight:600; }
+.addrow { display:flex; gap:8px; margin-top:10px; }
+.addinp { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:var(--r); padding:8px 12px; font-size:13px; color:var(--text); font-family:var(--fb); outline:none; }
+.addinp:focus{border-color:var(--accent);}
+.addbtn { padding:8px 14px; border-radius:var(--r); border:none; background:var(--accent); color:#fff; cursor:pointer; font-size:12px; font-family:var(--fd); }
+/* recordings */
+.rrow { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--r); cursor:pointer; border:1px solid transparent; transition:all .15s; }
+.rrow:hover{background:var(--surface2);}
+.rrow.sel{border-color:rgba(37,99,235,.2);background:var(--accent-dim);}
+.avtr { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--fd); font-size:11px; font-weight:500; flex-shrink:0; }
+.rinfo{flex:1;min-width:0;}
+.rname{font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rsub{font-size:11px;color:var(--muted);margin-top:1px;}
+.rdet{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin:4px 0 6px;font-size:12px;color:var(--muted);line-height:1.65;border-left:3px solid;}
+.rdtitle{font-family:var(--fd);font-size:9px;letter-spacing:.1em;margin-bottom:6px;font-weight:500;text-transform:uppercase;}
+.rdsec{font-family:var(--fd);font-size:9px;letter-spacing:.1em;color:var(--warn-text);margin:8px 0 5px;padding-top:8px;border-top:1px solid var(--border);font-weight:500;text-transform:uppercase;}
+.rdtrans{white-space:pre-wrap;font-size:12px;max-height:180px;overflow-y:auto;line-height:1.6;}
+/* chat */
+.cwrap{max-width:700px;margin:0 auto;}
+.dhdr{display:flex;align-items:center;gap:14px;padding:0 0 18px;}
+.dav{width:46px;height:46px;border-radius:50%;background:var(--purple-dim);border:2px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;}
+.dname{font-size:19px;font-weight:600;}
+.dsub{font-size:12px;color:var(--muted);margin-top:2px;}
+.ccard{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;box-shadow:var(--shadow-md);}
+.qprompts{display:flex;flex-wrap:wrap;gap:7px;padding:12px 16px;border-bottom:1px solid var(--border-light);background:var(--bg);}
+.qbtn{font-size:12px;font-family:var(--fb);padding:6px 13px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;transition:all .15s;}
+.qbtn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim);}
+.msgs{display:flex;flex-direction:column;gap:12px;padding:18px;overflow-y:auto;max-height:440px;min-height:200px;}
+.msg{display:flex;gap:10px;animation:fadeIn .2s;}
+.msg.user{justify-content:flex-end;}
+.mico{width:28px;height:28px;border-radius:50%;background:var(--purple-dim);border:1px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;}
+.mbub{max-width:78%;padding:10px 14px;font-size:13px;line-height:1.6;white-space:pre-wrap;}
+.mbub.ai{border-radius:4px 13px 13px 13px;background:var(--surface2);border:1px solid var(--border);color:var(--text);}
+.mbub.user{border-radius:13px 4px 13px 13px;background:var(--accent);color:#fff;}
+.thk{color:var(--muted);font-family:var(--fd);font-size:11px;}
+.cinrow{display:flex;gap:8px;padding:14px 16px;border-top:1px solid var(--border-light);background:var(--bg);}
+.cinp{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--text);font-family:var(--fb);outline:none;}
+.cinp:focus{border-color:var(--accent);}
+.sbtn{padding:10px 20px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:12px;font-family:var(--fd);font-weight:500;}
+/* compose */
+.compose{margin-top:10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;}
+.comphdr{padding:10px 14px;background:var(--bg);border-bottom:1px solid var(--border);font-size:12px;font-family:var(--fd);color:var(--muted);}
+.compa{width:100%;padding:12px 14px;border:none;background:var(--surface);font-size:13px;color:var(--text);font-family:var(--fb);outline:none;resize:vertical;min-height:100px;line-height:1.6;}
+.compftr{padding:8px 12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg);}
+/* setup */
+#setup{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem 1rem;}
+.wiz{width:100%;max-width:520px;}
+.wbrand{display:flex;align-items:center;gap:14px;margin-bottom:6px;}
+.wbico{width:42px;height:42px;border-radius:50%;background:var(--purple-dim);border:2px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;}
+.wtitle{font-size:22px;font-weight:600;}
+.wsub{font-size:13px;color:var(--muted);margin-bottom:24px;margin-top:4px;}
+.wcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:20px 24px;margin-bottom:12px;box-shadow:var(--shadow);transition:border-color .2s,box-shadow .2s;}
+.wcard.active{border-color:rgba(37,99,235,.35);box-shadow:0 0 0 3px rgba(37,99,235,.06);}
+.wcard.dim{opacity:.35;pointer-events:none;}
+.srow{display:flex;align-items:center;gap:12px;}
+.srow.hc{margin-bottom:14px;}
+.snum{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-family:var(--fd);font-weight:500;flex-shrink:0;background:var(--surface2);color:var(--muted);border:1px solid var(--border);transition:all .2s;}
+.snum.active{background:var(--accent-dim);color:var(--accent-text);border-color:rgba(37,99,235,.3);}
+.snum.done{background:var(--success-dim);color:var(--success-text);border-color:rgba(22,163,74,.3);}
+.stitle{font-size:14px;font-weight:600;flex:1;}
+.shint{font-size:12px;color:var(--muted);margin-top:2px;}
+.winp{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--text);font-family:var(--fd);outline:none;margin-bottom:10px;letter-spacing:.03em;}
+.winp:focus{border-color:var(--accent);}
+.wnote{font-size:12px;color:var(--muted);line-height:1.65;background:var(--bg);border-radius:var(--r);padding:10px 12px;margin-bottom:12px;border:1px solid var(--border-light);}
+.werr{font-size:12px;color:var(--danger);margin-bottom:10px;background:var(--danger-dim);padding:10px 12px;border-radius:var(--r);}
+.wok{font-size:12px;color:var(--success-text);margin-bottom:10px;font-weight:500;}
+.brow{display:flex;gap:10px;flex-wrap:wrap;}
+.wbtn{padding:10px 20px;border-radius:var(--r);border:none;cursor:pointer;font-size:12px;font-family:var(--fd);letter-spacing:.05em;font-weight:500;transition:all .15s;}
+.wbtn:disabled{cursor:not-allowed;opacity:.45;}
+.wbtn.pri{background:var(--accent);color:#fff;}
+.wbtn.sec{background:var(--surface2);color:var(--muted);border:1px solid var(--border);}
+.crow{margin-bottom:12px;}
+.clbl{font-size:10px;font-family:var(--fd);color:var(--muted);letter-spacing:.08em;margin-bottom:5px;text-transform:uppercase;font-weight:500;}
+.cbox{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:9px 12px;}
+.cval{flex:1;font-size:12px;font-family:var(--fd);color:var(--text);word-break:break-all;}
+.cbtn{flex-shrink:0;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:11px;font-family:var(--fd);cursor:pointer;}
+.cbtn.copied{color:var(--success-text);border-color:var(--success);}
+.stcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:14px 20px;box-shadow:var(--shadow);}
+.sttitle{font-size:10px;font-family:var(--fd);color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;font-weight:500;}
+.strow{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border-light);font-size:13px;}
+.strow:last-child{border-bottom:none;}
+.stdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--border);border:1px solid var(--dim);}
+.stdot.ok{background:var(--success);border:none;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const CLICKUP_TOKEN='pk_44548556_MU5ROGG57WK8XKY9B6MFXV22UEW9D3ZV';
+const CLICKUP_TEAM='4663587';
+const CLICKUP_USER='44548556';
+
+const S={
+  tab:'dashboard',
+  tasks:[],calls:[],stats:{open:0,done:0,overdue:0,totalCalls:0},selectedCall:null,newTask:'',
+  emails:[],emailsLoading:false,selectedEmail:null,selectedEmailIdx:-1,
+  emailAlerts:[],alertsLoading:false,alertsGenerated:false,
+  composingReply:null,replyDraft:'',
+  cuTasks:[],cuLoading:false,cuCompleted:{},
+  messages:[{role:'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket, Gmail and ClickUp. Ask me what needs your attention today, or anything else."}],
+  chatLoading:false,
+  syncing:false,syncMsg:null,
+  wizStep:1,backendUrl:localStorage.getItem('pa_api_base')||'',
+  apiKey:'',keyResult:null,checkingBackend:false,backendErr:'',
+  verifyingKey:false,checkingWebhook:false,webhookResult:null,
+};
+
+function API(){return(localStorage.getItem('pa_api_base')||'').replace(/\/$/,'');}
+function isSetup(){return!!localStorage.getItem('pa_setup_done');}
+function render(){document.getElementById('app').innerHTML=isSetup()?renderDash():renderSetup();bindEvents();}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function callColor(id){const c=[['#2563EB','#DBEAFE'],['#16A34A','#DCFCE7'],['#D97706','#FEF3C7'],['#DC2626','#FEE2E2'],['#7C3AED','#EDE9FE']];return c[Math.abs((id||'').charCodeAt(0)||0)%5];}
+function initials(c){return(c.speakers?.[0]?.slice(0,2)||c.title?.slice(0,2)||'??').toUpperCase();}
+function fmtDate(d){try{return new Date(d).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});}catch{return'';}}
+function fmtEmailDate(d){if(!d)return'';const dt=new Date(d),now=new Date(),diff=now-dt;if(diff<86400000)return dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});if(diff<604800000)return dt.toLocaleDateString('en-GB',{weekday:'short'});return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'});}
+
+async function callClaude(system,msg){
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,system,messages:[{role:'user',content:msg}]})});
+  const d=await res.json();return d.content?.[0]?.text||'No response.';
+}
+
+async function callClaudeMCP(system,msg,mcpServers){
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,system,messages:[{role:'user',content:msg}],mcp_servers:mcpServers})});
+  const d=await res.json();
+  return (d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+}
+
+async function fetchEmails(){
+  S.emailsLoading=true;render();
+  try{
+    const text=await callClaudeMCP(
+      'Use the Gmail MCP tool to fetch the user\'s inbox. Return ONLY a valid JSON array (no markdown, no backticks, no explanation) of the 20 most recent emails with these exact fields: id (string), subject (string), from_name (string), from_email (string), date (ISO string), snippet (string, max 100 chars), is_unread (boolean). Sort newest first.',
+      'Fetch my 20 most recent Gmail inbox messages. Return JSON array only, no other text.',
+      [{type:'url',url:'https://gmail.mcp.claude.com/mcp',name:'gmail'}]
+    );
+    const clean=text.replace(/```json|```/g,'').trim();
+    const idx=clean.indexOf('[');
+    const parsed=JSON.parse(idx>=0?clean.slice(idx):clean);
+    S.emails=Array.isArray(parsed)?parsed:(parsed.emails||[]);
+  }catch(e){console.error('Gmail:',e);S.emails=[];}
+  S.emailsLoading=false;render();
+  if(S.emails.length>0&&!S.alertsGenerated)generateAlerts();
+}
+
+async function fetchEmailBody(emailId){
+  try{
+    const text=await callClaudeMCP(
+      'Use Gmail MCP to get the full content of one email. Return ONLY a JSON object (no markdown) with: body (string, plain text max 2000 chars), from_name (string), from_email (string), subject (string), date (string).',
+      `Get full body of Gmail message ID: ${emailId}. JSON only.`,
+      [{type:'url',url:'https://gmail.mcp.claude.com/mcp',name:'gmail'}]
+    );
+    const clean=text.replace(/```json|```/g,'').trim();
+    const idx=clean.indexOf('{');
+    return JSON.parse(idx>=0?clean.slice(idx):clean);
+  }catch(e){return null;}
+}
+
+async function generateAlerts(){
+  S.alertsLoading=true;S.alertsGenerated=true;render();
+  try{
+    const emailCtx=S.emails.slice(0,15).map((e,i)=>`${i+1}. From: ${e.from_name||e.from_email} | Subject: ${e.subject} | Preview: ${e.snippet} | Unread: ${e.is_unread}`).join('\n');
+    const cuCtx=S.cuTasks.slice(0,10).map(t=>`- ${t.name} [${t.status?.status}] priority: ${t.priority?.priority||'normal'} due: ${t.due_date?new Date(parseInt(t.due_date)).toLocaleDateString('en-GB'):'none'}`).join('\n');
+    const reply=await callClaude(
+      'You are Denise, PA for Ross at Nino Logistics/Moov Parcel UK. Analyse emails and tasks. Return ONLY a JSON array (no markdown) of up to 5 most important action items. Each: {type:"email"|"task"|"urgent", title:string(max 10 words), reason:string(max 20 words), email_index:number|null(1-based), priority:"high"|"medium"}',
+      `Emails:\n${emailCtx}\n\nClickUp tasks:\n${cuCtx||'Not loaded'}`
+    );
+    const clean=reply.replace(/```json|```/g,'').trim();
+    const idx=clean.indexOf('[');
+    S.emailAlerts=JSON.parse(idx>=0?clean.slice(idx):clean);
+  }catch(e){S.emailAlerts=[];}
+  S.alertsLoading=false;render();
+}
+
+async function draftReply(email){
+  S.composingReply=email;S.replyDraft='Drafting reply...';render();
+  try{
+    const draft=await callClaude(
+      'Draft a professional, concise email reply for Ross at Nino Logistics/Moov Parcel UK. Return only the email body text.',
+      `Draft reply to:\nFrom: ${email.from_name||email.from_email}\nSubject: ${email.subject}\nContent: ${email.body||email.snippet}`
+    );
+    S.replyDraft=draft;
+  }catch{S.replyDraft='';}
+  render();
+}
+
+async function fetchClickUp(){
+  S.cuLoading=true;render();
+  try{
+    const res=await fetch(`https://api.clickup.com/api/v2/team/${CLICKUP_TEAM}/task?assignees[]=${CLICKUP_USER}&include_closed=false&subtasks=true&page=0&order_by=due_date`,{headers:{Authorization:CLICKUP_TOKEN}});
+    const d=await res.json();
+    S.cuTasks=(d.tasks||[]).slice(0,60);
+  }catch(e){console.error('ClickUp:',e);S.cuTasks=[];}
+  S.cuLoading=false;render();
+}
+
+async function completeClickUpTask(taskId,taskName){
+  if(!confirm(`Mark "${taskName}" as complete in ClickUp?`))return;
+  S.cuCompleted[taskId]=true;render();
+  try{
+    await fetch(`https://api.clickup.com/api/v2/task/${taskId}`,{method:'PUT',headers:{Authorization:CLICKUP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({status:'complete'})});
+    setTimeout(()=>{S.cuTasks=S.cuTasks.filter(t=>t.id!==taskId);render();},500);
+  }catch(e){delete S.cuCompleted[taskId];render();}
+}
+
+async function fetchData(){
+  try{const res=await fetch(`${API()}/api/data`);const d=await res.json();S.tasks=d.tasks||[];S.calls=d.calls||[];S.stats=d.stats||{};render();}catch{}
+}
+async function toggleTask(id){
+  S.tasks=S.tasks.map(t=>t.id===id?{...t,status:t.status==='done'?'open':'done'}:t);render();
+  try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH'});}catch{}
+}
+async function addTask(text){
+  if(!text.trim())return;
+  const tmp={id:'tmp_'+Date.now(),text:text.trim(),due:'Today',status:'open',source:'manual'};
+  S.tasks=[tmp,...S.tasks];S.newTask='';render();
+  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim()})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);render();}catch{}
+}
+async function deleteCall(id){
+  const call=S.calls.find(c=>c.id===id);
+  if(!confirm(`Remove "${call?.title||'this recording'}" from Denise?\n\nThis will not delete it from your Pocket app.`))return;
+  S.calls=S.calls.filter(c=>c.id!==id);S.tasks=S.tasks.filter(t=>t.recordingId!==id);
+  if(S.selectedCall?.id===id)S.selectedCall=null;
+  S.stats={...S.stats,totalCalls:S.calls.length};render();
+  try{await fetch(`${API()}/api/calls/${id}`,{method:'DELETE'});await fetchData();}catch{await fetchData();}
+}
+async function syncPocket(){
+  S.syncing=true;render();
+  try{const res=await fetch(`${API()}/api/sync`,{method:'POST'});const d=await res.json();S.syncMsg=d.message||d.error;await fetchData();}catch{S.syncMsg='Sync failed';}
+  S.syncing=false;render();setTimeout(()=>{S.syncMsg=null;render();},4000);
+}
+async function forceSyncPocket(){
+  S.syncing=true;render();
+  try{const res=await fetch(`${API()}/api/sync/force`,{method:'POST'});const d=await res.json();S.syncMsg=d.message||d.error;await fetchData();}catch{S.syncMsg='Sync failed';}
+  S.syncing=false;render();setTimeout(()=>{S.syncMsg=null;render();},5000);
+}
+
+async function sendChat(msg){
+  if(!msg.trim()||S.chatLoading)return;
+  S.messages.push({role:'user',text:msg});S.chatLoading=true;render();scrollChat();
+  const tCtx=S.tasks.slice(0,10).map(t=>`- [${t.status}] ${t.text} (due:${t.due})`).join('\n');
+  const rCtx=S.calls.slice(0,5).map(c=>`- "${c.title}": ${c.bulletPoints?.join(';')||'no summary'}`).join('\n');
+  const eCtx=S.emails.slice(0,8).map(e=>`- From ${e.from_name||e.from_email}: "${e.subject}" — ${e.snippet?.slice(0,80)}`).join('\n');
+  const cCtx=S.cuTasks.slice(0,8).map(t=>`- [${t.status?.status}] ${t.name} (${t.priority?.priority||'normal'})`).join('\n');
+  const sys=`You are Denise, sharp friendly PA for Ross at Nino Logistics/Moov Parcel UK. Concise, warm, practical. Max 150 words unless drafting.\n\nPocket tasks:\n${tCtx||'None'}\nRecordings:\n${rCtx||'None'}\nGmail:\n${eCtx||'Not loaded'}\nClickUp:\n${cCtx||'Not loaded'}`;
+  try{const r=await callClaude(sys,msg);S.messages.push({role:'ai',text:r});}
+  catch{S.messages.push({role:'ai',text:'Could not reach API.'});}
+  S.chatLoading=false;render();scrollChat();
+}
+function scrollChat(){setTimeout(()=>{const m=document.querySelector('.msgs');if(m)m.scrollTop=m.scrollHeight;},50);}
+
+async function wizCheckBackend(){
+  S.checkingBackend=true;S.backendErr='';render();
+  try{const url=S.backendUrl.replace(/\/$/,'');const res=await fetch(`${url}/health`,{signal:AbortSignal.timeout(8000)});if(!res.ok)throw new Error();localStorage.setItem('pa_api_base',url);S.wizStep=2;}
+  catch{S.backendErr='Could not reach that URL. Check Railway has finished deploying.';}
+  S.checkingBackend=false;render();
+}
+async function wizVerifyKey(){
+  const key=document.getElementById('apiKey')?.value||S.apiKey;S.apiKey=key;
+  S.verifyingKey=true;S.keyResult=null;render();
+  try{const res=await fetch(`${API()}/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});const data=await res.json();S.keyResult=data;if(data.ok){await fetch(`${API()}/api/setup/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});S.wizStep=3;}}
+  catch{S.keyResult={ok:false,error:'Could not reach backend'};}
+  S.verifyingKey=false;render();
+}
+async function wizCheckWebhook(){
+  S.checkingWebhook=true;S.webhookResult=null;render();
+  try{const res=await fetch(`${API()}/api/setup/verify-webhook`,{method:'POST'});const data=await res.json();S.webhookResult=data;if(data.ok){localStorage.setItem('pa_setup_done','1');setTimeout(()=>{render();fetchData();startPolling();},1000);}else S.webhookResult={ok:false,message:'No recordings yet — make a short test recording on your Pocket first.'};}
+  catch{S.webhookResult={ok:false,message:'Could not reach backend at '+API()};}
+  S.checkingWebhook=false;render();
+}
+async function wizSkip(){
+  try{await fetch(`${API()}/api/setup/complete`,{method:'POST'});}catch{}
+  localStorage.setItem('pa_setup_done','1');render();fetchData();startPolling();
+}
+function copyText(text,btnId){
+  navigator.clipboard.writeText(text);
+  const btn=document.getElementById(btnId);
+  if(btn){btn.textContent='Copied!';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied');},2000);}
+}
+
+function renderSetup(){
+  const whu=S.backendUrl?`${S.backendUrl.replace(/\/$/,'')}/webhook/pocket`:'';
+  return `<div id="setup"><div class="wiz">
+  <div class="wbrand"><div class="wbico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div><div><div class="wtitle">Meet Denise</div></div></div>
+  <div class="wsub">Your unified PA — Pocket, Gmail &amp; ClickUp in one place</div>
+  <div class="wcard ${S.wizStep===1?'active':''} ${S.wizStep<1?'dim':''}">
+    <div class="srow ${S.wizStep===1?'hc':''}"><div class="snum ${S.wizStep>1?'done':S.wizStep===1?'active':''}">${S.wizStep>1?'✓':'1'}</div><div style="flex:1"><div class="stitle">Enter your Railway backend URL</div><div class="shint">The URL Railway gave you after deploying</div></div>${S.wizStep>1?'<span class="bdg bs">Connected</span>':''}</div>
+    ${S.wizStep===1?`<input class="winp" id="backendUrl" type="text" value="${esc(S.backendUrl)}" placeholder="https://your-app.up.railway.app" />${S.backendErr?`<div class="werr">${esc(S.backendErr)}</div>`:''}<div class="brow"><button class="wbtn pri" id="btnCheckBackend">${S.checkingBackend?'Connecting...':'Connect →'}</button></div>`:''}
+  </div>
+  <div class="wcard ${S.wizStep===2?'active':''} ${S.wizStep<2?'dim':''}">
+    <div class="srow ${S.wizStep===2?'hc':''}"><div class="snum ${S.wizStep>2?'done':S.wizStep===2?'active':''}">${S.wizStep>2?'✓':'2'}</div><div style="flex:1"><div class="stitle">Paste your Pocket API key</div><div class="shint">Pocket app → Developer settings</div></div>${S.wizStep>2&&S.keyResult?.ok?`<span class="bdg bs">${S.keyResult.recordingCount} recordings</span>`:''}</div>
+    ${S.wizStep===2?`<input class="winp" id="apiKey" type="text" value="${esc(S.apiKey)}" placeholder="pk_xxxxxxxxxxxxxxxx" />${S.keyResult&&!S.keyResult.ok?`<div class="werr">${esc(S.keyResult.error)}</div>`:''}<div class="brow"><button class="wbtn pri" id="btnVerifyKey">${S.verifyingKey?'Verifying...':'Verify key →'}</button></div>`:''}
+  </div>
+  <div class="wcard ${S.wizStep===3?'active':''} ${S.wizStep<3?'dim':''}">
+    <div class="srow ${S.wizStep===3?'hc':''}"><div class="snum ${S.wizStep===3?'active':''}">3</div><div style="flex:1"><div class="stitle">Connect Pocket webhook</div><div class="shint">Pocket app → Developer settings → Webhook URL</div></div></div>
+    ${S.wizStep===3?`<div class="crow"><div class="clbl">Webhook URL</div><div class="cbox"><span class="cval">${esc(whu)}</span><button class="cbtn" id="copyUrl" onclick="copyText('${esc(whu)}','copyUrl')">Copy</button></div></div><div class="wnote">If Pocket already saved the webhook URL, just click Go to dashboard.</div>${S.webhookResult&&!S.webhookResult.ok?`<div class="werr">${esc(S.webhookResult.message)}</div>`:''}${S.webhookResult?.ok?`<div class="wok">✓ Webhook working!</div>`:''}<div class="brow"><button class="wbtn pri" id="btnSkip">Go to dashboard →</button><button class="wbtn sec" id="btnCheckWebhook">${S.checkingWebhook?'Checking...':'Verify recording'}</button></div>`:''}
+  </div>
+  <div class="stcard"><div class="sttitle">Status</div>
+    ${[['Backend reachable',S.wizStep>1],['Pocket API key verified',S.wizStep>2],['Webhook configured',!!S.webhookResult?.ok]].map(([l,ok])=>`<div class="strow"><div class="stdot ${ok?'ok':''}"></div><span style="color:${ok?'var(--text)':'var(--muted)'}">${l}</span></div>`).join('')}
+  </div>
+  </div></div>`;
+}
+
+function renderDash(){
+  const overdue=S.tasks.filter(t=>t.status==='overdue').length;
+  const unread=S.emails.filter(e=>e.is_unread).length;
+  const today=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+  return `<div>
+  <div class="header">
+    <div><div class="logo">DENISE <span>/ ROSS'S PA</span></div><div class="dateline">${today.toUpperCase()}</div></div>
+    <div class="nav">
+      <button class="nav-btn ${S.tab==='dashboard'?'active':''}" data-tab="dashboard">DASHBOARD</button>
+      <button class="nav-btn ${S.tab==='gmail'?'active':''}" data-tab="gmail">GMAIL${unread>0?'<span class="bdot"></span>':''}</button>
+      <button class="nav-btn ${S.tab==='clickup'?'active':''}" data-tab="clickup">CLICKUP</button>
+      <button class="nav-btn ${S.tab==='pocket'?'active':''}" data-tab="pocket">RECORDINGS</button>
+      <button class="nav-btn ${S.tab==='pa'?'active':''}" data-tab="pa">CHAT WITH DENISE</button>
+    </div>
+    <div class="hdr-right">
+      ${S.syncMsg?`<span class="smsg">${esc(S.syncMsg)}</span>`:''}
+      <button class="hbtn" id="btnForceSync" ${S.syncing?'disabled':''}>↻ Refresh all</button>
+      <button class="hbtn" id="btnSync" ${S.syncing?'disabled':''}>${S.syncing?'Syncing...':'↓ Sync Pocket'}</button>
+      <div class="live"><div class="ldot"></div>Live</div>
+      <button class="rbtn" id="btnReset">Reset</button>
+    </div>
+  </div>
+  <div class="body">
+    ${S.tab==='dashboard'?renderDashTab(overdue,unread):S.tab==='gmail'?renderGmailTab():S.tab==='clickup'?renderClickUpTab():S.tab==='pocket'?renderPocketTab(overdue):renderPATab()}
+  </div></div>`;
+}
+
+function renderDashTab(overdue,unread){
+  const hi=S.emailAlerts.filter(a=>a.priority==='high');
+  return `
+  <div class="stats">
+    <div class="stat"><div class="slbl">Pocket tasks</div><div class="sval" style="color:var(--accent)">${S.stats.open||0}</div></div>
+    <div class="stat"><div class="slbl">Overdue</div><div class="sval" style="color:var(--danger)">${overdue||0}</div></div>
+    <div class="stat"><div class="slbl">Unread emails</div><div class="sval" style="color:var(--teal)">${unread}</div></div>
+    <div class="stat"><div class="slbl">ClickUp tasks</div><div class="sval" style="color:var(--warn)">${S.cuTasks.length}</div></div>
+    <div class="stat"><div class="slbl">Recordings</div><div class="sval" style="color:var(--purple)">${S.stats.totalCalls||0}</div></div>
+  </div>
+  ${S.alertsLoading?`<div class="card" style="margin-bottom:14px"><div class="ldr"><div class="spinner"></div>Denise is scanning your emails and tasks...</div></div>`:
+    hi.length>0?`<div class="card" style="margin-bottom:14px"><div class="chdr"><span class="ctitle">Needs your attention</span><span class="bdg bd">${hi.length} urgent</span></div>
+    ${hi.map(a=>`<div class="arow"><div class="aico" style="background:${a.type==='email'?'var(--teal-dim)':'var(--warn-dim)'}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${a.type==='email'?'var(--teal-text)':'var(--warn-text)'}" stroke-width="2">${a.type==='email'?'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 7 10-7"/>':'<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>'}</svg></div><div style="flex:1"><div class="atitle">${esc(a.title)}</div><div class="asub">${esc(a.reason)}</div>${a.type==='email'&&a.email_index?`<button class="aact" data-goto-email="${a.email_index-1}">Open email →</button>`:''}</div></div>`).join('')}
+    </div>`:
+    !S.alertsGenerated?`<div class="card" style="margin-bottom:14px"><div style="font-size:13px;color:var(--muted);padding:4px 0">Open <strong>Gmail</strong> tab to load your inbox — Denise will flag what needs your attention.</div></div>`:''}
+  <div class="g3">
+    <div class="card">
+      <div class="chdr"><span class="ctitle">Pocket tasks</span><span class="bdg bd">${overdue||0} overdue</span></div>
+      ${S.tasks.length===0?'<div style="font-size:13px;color:var(--muted)">No tasks yet.</div>':''}
+      ${S.tasks.slice(0,7).map(t=>{const done=t.status==='done',ov=t.status==='overdue';return`<div class="trow ${done?'done':''}" data-toggle="${esc(t.id)}"><div class="tchk ${done?'done':''}">${done?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><span class="ttxt ${done?'done':''}">${esc(t.text)}</span>${t.source==='pocket'?'<span class="tsrc">POCKET</span>':''}<span class="tdue ${ov?'ov':''}">${esc(t.due)}</span></div>`;}).join('')}
+      <div class="addrow"><input class="addinp" id="newTask" placeholder="Add a task..." /><button class="addbtn" id="btnAddTask">+ Add</button></div>
+    </div>
+    <div class="card">
+      <div class="chdr"><span class="ctitle">ClickUp inbox</span><span class="bdg bw">${S.cuTasks.length} tasks</span></div>
+      ${S.cuLoading?`<div class="ldr"><div class="spinner"></div>Loading...</div>`:S.cuTasks.length===0?`<div style="font-size:13px;color:var(--muted)">No tasks.<br><button style="margin-top:8px;padding:7px 14px;border-radius:var(--r);border:1px solid var(--border);background:transparent;color:var(--accent);font-size:12px;font-family:var(--fd);cursor:pointer" id="btnLoadCU">Load ClickUp</button></div>`:
+      S.cuTasks.slice(0,6).map(t=>{const done=S.cuCompleted[t.id];const pri=t.priority?.priority||'normal';return`<div class="curow"><div class="cuchk ${done?'done':''}" data-cu="${esc(t.id)}" data-cuname="${esc(t.name)}">${done?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><div class="cuinfo"><div class="cuname ${done?'done':''}">${esc(t.name)}</div><div class="cumeta">${esc(t.list?.name||'')}${t.due_date?` · Due ${new Date(parseInt(t.due_date)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:''}</div></div><span class="cupri cp${pri[0]}">${pri}</span></div>`;}).join('')}
+    </div>
+    <div class="card">
+      <div class="chdr"><span class="ctitle">Recent emails</span><span class="bdg bt">${S.emails.filter(e=>e.is_unread).length} unread</span></div>
+      ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading Gmail...</div>`:S.emails.length===0?`<div style="font-size:13px;color:var(--muted)">No emails loaded.<br><button style="margin-top:8px;padding:7px 14px;border-radius:var(--r);border:1px solid var(--border);background:transparent;color:var(--accent);font-size:12px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail">Load Gmail</button></div>`:
+      S.emails.slice(0,6).map((e,i)=>`<div class="erow ${e.is_unread?'unread':''}" data-email="${i}" style="padding:6px 8px"><div class="edot ${e.is_unread?'':'read'}"></div><div class="einfo"><div class="esender">${esc(e.from_name||e.from_email)}</div><div class="esubj">${esc(e.subject)}</div></div><div class="etime">${esc(fmtEmailDate(e.date))}</div></div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function renderGmailTab(){
+  const sel=S.selectedEmail;
+  return `<div style="display:grid;grid-template-columns:${sel?'1fr 1.5fr':'1fr'};gap:14px;align-items:start">
+  <div class="card">
+    <div class="chdr"><span class="ctitle">Inbox</span><div style="display:flex;gap:8px;align-items:center"><span class="bdg bt">${S.emails.filter(e=>e.is_unread).length} unread</span><button style="padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--accent);font-size:11px;font-family:var(--fd);cursor:pointer" id="btnRefreshEmail">↻</button></div></div>
+    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading your inbox...</div>`:S.emails.length===0?`<div style="font-size:13px;color:var(--muted);padding:8px 0">No emails loaded.<br><br><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Load Gmail inbox</button></div>`:
+    S.emails.map((e,i)=>`<div class="erow ${e.is_unread?'unread':''} ${sel&&S.selectedEmailIdx===i?'sel':''}" data-email="${i}"><div class="edot ${e.is_unread?'':'read'}"></div><div class="einfo"><div class="esender">${esc(e.from_name||e.from_email)}</div><div class="esubj">${esc(e.subject)}</div><div class="eprev">${esc(e.snippet)}</div></div><div class="etime">${esc(fmtEmailDate(e.date))}</div></div>`).join('')}
+  </div>
+  ${sel?`<div>
+    <div class="edetail">
+      <div class="esubject">${esc(sel.subject)}</div>
+      <div class="emeta">From: ${esc(sel.from_name||sel.from_email)}${sel.from_email&&sel.from_name?` &lt;${esc(sel.from_email)}&gt;`:''}<br>${sel.date?`Date: ${new Date(sel.date).toLocaleString('en-GB')}`:''}
+      </div>
+      ${sel.bodyLoading?`<div class="ldr"><div class="spinner"></div>Loading email...</div>`:`<div class="ebody">${esc(sel.body||sel.snippet||'')}</div>`}
+      <div class="eactions">
+        <button class="ebtn pri" id="btnDraftReply">✏ Draft reply with Denise</button>
+        <button class="ebtn" id="btnCloseEmail">✕ Close</button>
+      </div>
+    </div>
+    ${S.composingReply?.id===sel.id?`<div class="compose"><div class="comphdr">Reply to: ${esc(sel.from_name||sel.from_email)}</div><textarea class="compa" id="replyArea">${esc(S.replyDraft)}</textarea><div class="compftr"><button class="ebtn" id="btnCancelReply">Cancel</button><button class="ebtn pri" id="btnCopyReply">Copy reply text</button></div></div>`:''}
+  </div>`:''}
+  </div>`;
+}
+
+function renderClickUpTab(){
+  const hi=S.cuTasks.filter(t=>t.priority?.priority==='urgent'||t.priority?.priority==='high');
+  const lo=S.cuTasks.filter(t=>t.priority?.priority!=='urgent'&&t.priority?.priority!=='high');
+  return `<div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <div><div style="font-size:18px;font-weight:600">ClickUp Inbox</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Tasks assigned to you · ${S.cuTasks.length} total</div></div>
+    <button style="padding:9px 18px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);color:var(--accent);font-size:12px;font-family:var(--fd);cursor:pointer;box-shadow:var(--shadow)" id="btnRefreshCU">↻ Refresh</button>
+  </div>
+  ${S.cuLoading?`<div class="card"><div class="ldr"><div class="spinner"></div>Loading your ClickUp tasks...</div></div>`:S.cuTasks.length===0?`<div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--muted);margin-bottom:16px">No tasks loaded yet.</div><button style="padding:10px 20px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadCU2">Load my ClickUp tasks</button></div>`:
+  `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    <div class="card"><div class="chdr"><span class="ctitle">High priority</span><span class="bdg bd">${hi.length}</span></div>
+    ${hi.length===0?'<div style="font-size:13px;color:var(--muted)">No urgent tasks — nice!</div>':''}
+    ${hi.map(t=>`<div class="curow"><div class="cuchk ${S.cuCompleted[t.id]?'done':''}" data-cu="${esc(t.id)}" data-cuname="${esc(t.name)}">${S.cuCompleted[t.id]?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><div class="cuinfo"><div class="cuname">${esc(t.name)}</div><div class="cumeta">${esc(t.list?.name||'')}${t.due_date?` · Due ${new Date(parseInt(t.due_date)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:''}</div></div><span class="custa">${esc(t.status?.status||'open')}</span></div>`).join('')}
+    </div>
+    <div class="card"><div class="chdr"><span class="ctitle">Normal &amp; low</span><span class="bdg ba">${lo.length}</span></div>
+    ${lo.length===0?'<div style="font-size:13px;color:var(--muted)">No tasks.</div>':''}
+    ${lo.map(t=>`<div class="curow"><div class="cuchk ${S.cuCompleted[t.id]?'done':''}" data-cu="${esc(t.id)}" data-cuname="${esc(t.name)}">${S.cuCompleted[t.id]?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><div class="cuinfo"><div class="cuname">${esc(t.name)}</div><div class="cumeta">${esc(t.list?.name||'')}${t.due_date?` · Due ${new Date(parseInt(t.due_date)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:''}</div></div><span class="custa">${esc(t.status?.status||'open')}</span></div>`).join('')}
+    </div>
+  </div>`}
+  </div>`;
+}
+
+function renderPocketTab(overdue){
+  return `<div class="g2">
+  <div class="card">
+    <div class="chdr"><span class="ctitle">Task board</span><span class="bdg bd">${overdue||0} overdue</span></div>
+    ${S.tasks.length===0?'<div style="font-size:13px;color:var(--muted)">No tasks yet.</div>':''}
+    ${S.tasks.slice(0,12).map(t=>{const done=t.status==='done',ov=t.status==='overdue';return`<div class="trow ${done?'done':''}" data-toggle="${esc(t.id)}"><div class="tchk ${done?'done':''}">${done?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><span class="ttxt ${done?'done':''}">${esc(t.text)}</span>${t.source==='pocket'?'<span class="tsrc">POCKET</span>':''}<span class="tdue ${ov?'ov':''}">${esc(t.due)}</span></div>`;}).join('')}
+    <div class="addrow"><input class="addinp" id="newTask2" placeholder="Add a task..." /><button class="addbtn" id="btnAddTask2">+ Add</button></div>
+  </div>
+  <div class="card">
+    <div class="chdr"><span class="ctitle">Recordings</span><span class="bdg bp">${S.calls.length} total</span></div>
+    ${S.calls.length===0?'<div style="font-size:13px;color:var(--muted)">No recordings yet.</div>':''}
+    ${S.calls.slice(0,8).map(call=>{const[fg,bg]=callColor(call.id),sel=S.selectedCall?.id===call.id;return`<div style="display:flex;align-items:center;gap:6px"><div class="rrow ${sel?'sel':''}" data-call="${esc(call.id)}" style="flex:1;${sel?`background:${bg};border-color:${fg}44`:''}"><div class="avtr" style="background:${bg};color:${fg}">${esc(initials(call))}</div><div class="rinfo"><div class="rname">${esc(call.title)}</div><div class="rsub">${esc(fmtDate(call.createdAt))}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div></div></div><button class="delete-call-btn" data-delete="${esc(call.id)}" style="flex-shrink:0;width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center" onmouseenter="this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--muted)'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/><path d="M9,6V4h6v2"/></svg></button></div>
+    ${sel?`<div class="rdet" style="border-left-color:${fg}"><div class="rdtitle" style="color:${fg}">${esc(call.title?.toUpperCase()||'')}</div>${call.bulletPoints?.length>0?call.bulletPoints.map(b=>`<div style="margin-bottom:3px">· ${esc(b)}</div>`).join(''):call.summary?`<div>${esc(call.summary)}</div>`:'<div>No summary yet.</div>'}${call.actionItems?.length>0?`<div class="rdsec">Action items</div>${call.actionItems.map(a=>`<div style="margin-bottom:2px">→ ${esc(a.title)}</div>`).join('')}`:''}${call.transcript?`<div class="rdsec" style="color:var(--accent-text)">Transcript</div><div class="rdtrans">${esc(call.transcript)}</div>`:''}</div>`:''}`;}).join('')}
+  </div>
+  </div>`;
+}
+
+function renderPATab(){
+  return `<div class="cwrap">
+  <div class="dhdr"><div class="dav"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div><div><div class="dname">Denise</div><div class="dsub">Pocket · Gmail · ClickUp · ${S.tasks.length} tasks · ${S.emails.length} emails · ${S.cuTasks.length} ClickUp tasks</div></div></div>
+  <div class="ccard">
+    <div class="qprompts">${['What needs my attention today?','Summarise my unread emails','Which ClickUp tasks are overdue?','Draft a reply to my most urgent email','What action items came from my last recording?'].map(q=>`<button class="qbtn" data-quick="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+    <div class="msgs" id="messages">
+      ${S.messages.map(m=>`<div class="msg ${m.role}">${m.role==='ai'?`<div class="mico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>`:''}<div class="mbub ${m.role}">${esc(m.text)}</div></div>`).join('')}
+      ${S.chatLoading?`<div class="msg ai"><div class="mico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div><div class="mbub ai"><span class="thk">Denise is thinking...</span></div></div>`:''}
+    </div>
+    <div class="cinrow"><input class="cinp" id="chatInput" placeholder="Ask Denise anything..." /><button class="sbtn" id="btnSend">Send</button></div>
+  </div>
+  </div>`;
+}
+
+function bindEvents(){
+  // Nav
+  document.querySelectorAll('[data-tab]').forEach(btn=>{btn.addEventListener('click',()=>{S.tab=btn.dataset.tab;render();if(S.tab==='gmail'&&S.emails.length===0&&!S.emailsLoading)fetchEmails();if(S.tab==='clickup'&&S.cuTasks.length===0&&!S.cuLoading)fetchClickUp();});});
+  // Wizard
+  const ui=document.getElementById('backendUrl');if(ui)ui.addEventListener('input',e=>S.backendUrl=e.target.value);
+  const bcb=document.getElementById('btnCheckBackend');if(bcb)bcb.addEventListener('click',()=>{S.backendUrl=document.getElementById('backendUrl')?.value||S.backendUrl;wizCheckBackend();});
+  const ki=document.getElementById('apiKey');if(ki)ki.addEventListener('input',e=>S.apiKey=e.target.value);
+  const bvk=document.getElementById('btnVerifyKey');if(bvk)bvk.addEventListener('click',()=>{S.apiKey=document.getElementById('apiKey')?.value||S.apiKey;wizVerifyKey();});
+  const bcw=document.getElementById('btnCheckWebhook');if(bcw)bcw.addEventListener('click',wizCheckWebhook);
+  const bsk=document.getElementById('btnSkip');if(bsk)bsk.addEventListener('click',wizSkip);
+  // Header
+  const bsy=document.getElementById('btnSync');if(bsy)bsy.addEventListener('click',syncPocket);
+  const bfs=document.getElementById('btnForceSync');if(bfs)bfs.addEventListener('click',forceSyncPocket);
+  const brs=document.getElementById('btnReset');if(brs)brs.addEventListener('click',()=>{if(confirm('Reset Denise?')){localStorage.removeItem('pa_setup_done');localStorage.removeItem('pa_api_base');S.wizStep=1;S.apiKey='';S.keyResult=null;S.tasks=[];S.calls=[];S.emails=[];S.cuTasks=[];render();}});
+  // Pocket tasks
+  document.querySelectorAll('[data-toggle]').forEach(r=>r.addEventListener('click',()=>toggleTask(r.dataset.toggle)));
+  const nt=document.getElementById('newTask');if(nt){nt.addEventListener('input',e=>S.newTask=e.target.value);nt.addEventListener('keydown',e=>{if(e.key==='Enter')addTask(nt.value);});}
+  const nt2=document.getElementById('newTask2');if(nt2)nt2.addEventListener('keydown',e=>{if(e.key==='Enter')addTask(nt2.value);});
+  const bat=document.getElementById('btnAddTask');if(bat)bat.addEventListener('click',()=>addTask(document.getElementById('newTask')?.value||''));
+  const bat2=document.getElementById('btnAddTask2');if(bat2)bat2.addEventListener('click',()=>addTask(document.getElementById('newTask2')?.value||''));
+  // Recordings
+  document.querySelectorAll('[data-call]').forEach(r=>{r.addEventListener('click',()=>{const c=S.calls.find(x=>x.id===r.dataset.call);S.selectedCall=S.selectedCall?.id===r.dataset.call?null:c;render();});});
+  document.querySelectorAll('[data-delete]').forEach(b=>{b.addEventListener('click',e=>{e.stopPropagation();deleteCall(b.dataset.delete);});});
+  // Gmail
+  const ble=document.getElementById('btnLoadEmail');if(ble)ble.addEventListener('click',fetchEmails);
+  const ble2=document.getElementById('btnLoadEmail2');if(ble2)ble2.addEventListener('click',fetchEmails);
+  const bre=document.getElementById('btnRefreshEmail');if(bre)bre.addEventListener('click',fetchEmails);
+  document.querySelectorAll('[data-email]').forEach(row=>{row.addEventListener('click',async()=>{const idx=parseInt(row.dataset.email);const email={...S.emails[idx]};S.selectedEmailIdx=idx;S.selectedEmail={...email,bodyLoading:true};S.composingReply=null;render();const full=await fetchEmailBody(email.id);S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});});
+  document.querySelectorAll('[data-goto-email]').forEach(b=>{b.addEventListener('click',()=>{const idx=parseInt(b.dataset.gotoEmail);S.tab='gmail';S.selectedEmailIdx=idx;S.selectedEmail={...S.emails[idx],bodyLoading:true};render();fetchEmailBody(S.emails[idx].id).then(full=>{S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});});});
+  const bdr=document.getElementById('btnDraftReply');if(bdr)bdr.addEventListener('click',()=>draftReply(S.selectedEmail));
+  const bce=document.getElementById('btnCloseEmail');if(bce)bce.addEventListener('click',()=>{S.selectedEmail=null;S.composingReply=null;render();});
+  const bcr=document.getElementById('btnCancelReply');if(bcr)bcr.addEventListener('click',()=>{S.composingReply=null;render();});
+  const bcop=document.getElementById('btnCopyReply');if(bcop)bcop.addEventListener('click',()=>{const a=document.getElementById('replyArea');navigator.clipboard.writeText(a?.value||S.replyDraft);bcop.textContent='Copied!';setTimeout(()=>bcop.textContent='Copy reply text',2000);});
+  // ClickUp
+  const brc=document.getElementById('btnRefreshCU');if(brc)brc.addEventListener('click',fetchClickUp);
+  const blc=document.getElementById('btnLoadCU');if(blc)blc.addEventListener('click',fetchClickUp);
+  const blc2=document.getElementById('btnLoadCU2');if(blc2)blc2.addEventListener('click',fetchClickUp);
+  document.querySelectorAll('[data-cu]').forEach(b=>{b.addEventListener('click',e=>{e.stopPropagation();completeClickUpTask(b.dataset.cu,b.dataset.cuname);});});
+  // Chat
+  const ci=document.getElementById('chatInput');if(ci)ci.addEventListener('keydown',e=>{if(e.key==='Enter'){sendChat(ci.value);ci.value='';}});
+  const bs=document.getElementById('btnSend');if(bs)bs.addEventListener('click',()=>{const i=document.getElementById('chatInput');if(i){sendChat(i.value);i.value='';}});
+  document.querySelectorAll('[data-quick]').forEach(b=>{b.addEventListener('click',()=>{const i=document.getElementById('chatInput');if(i)i.value=b.dataset.quick;});});
+  scrollChat();
+}
+
+let pollInterval=null;
+function startPolling(){if(pollInterval)clearInterval(pollInterval);pollInterval=setInterval(fetchData,30000);}
+
+render();
+if(isSetup()){fetchData();fetchClickUp();startPolling();}
+</script>
+</body>
+</html>
