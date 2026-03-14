@@ -208,7 +208,8 @@ const S={
   emails:[],emailsLoading:false,selectedEmail:null,selectedEmailIdx:-1,
   emailAlerts:[],alertsLoading:false,alertsGenerated:false,
   composingReply:null,replyDraft:'',
-  messages:[{role:'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket and Gmail. Ask me what needs your attention today, or anything else."}],
+  cuTasks:[],cuLoading:false,cuCompleted:{},
+  messages:[{'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket and Gmail. Ask me what needs your attention today, or anything else."}],
   chatLoading:false,
   syncing:false,syncMsg:null,
   wizStep:1,backendUrl:localStorage.getItem('pa_api_base')||'',
@@ -445,7 +446,6 @@ function renderDashTab(overdue,unread){
     <div class="stat"><div class="slbl">Pocket tasks</div><div class="sval" style="color:var(--accent)">${S.stats.open||0}</div></div>
     <div class="stat"><div class="slbl">Overdue</div><div class="sval" style="color:var(--danger)">${overdue||0}</div></div>
     <div class="stat"><div class="slbl">Unread emails</div><div class="sval" style="color:var(--teal)">${unread}</div></div>
-    <div class="stat"><div class="slbl">ClickUp tasks</div><div class="sval" style="color:var(--warn)">${S.cuTasks.length}</div></div>
     <div class="stat"><div class="slbl">Recordings</div><div class="sval" style="color:var(--purple)">${S.stats.totalCalls||0}</div></div>
   </div>
   ${S.alertsLoading?`<div class="card" style="margin-bottom:14px"><div class="ldr"><div class="spinner"></div>Denise is scanning your emails and tasks...</div></div>`:
