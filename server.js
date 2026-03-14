@@ -260,5 +260,20 @@ app.post("/webhook/pocket", (req, res) => {
 });
 
 app.get("/webhook/pocket", (req, res) => res.json({ ok: true }));
+app.get("/api/clickup/debug", async (req, res) => {
+  if (!CLICKUP_API_KEY) return res.status(400).json({ error: "CLICKUP_API_KEY not set" });
+  try {
+    const userRes = await fetch(CLICKUP_BASE + "/user", { headers: { Authorization: CLICKUP_API_KEY } });
+    const userData = await userRes.json();
+    const userId = userData.user?.id;
+    const r = await fetch(CLICKUP_BASE + "/team/" + CLICKUP_TEAM_ID + "/task?assignees[]=" + userId + "&include_closed=false&page=0", {
+      headers: { Authorization: CLICKUP_API_KEY }
+    });
+    const d = await r.json();
+    const tasks = (d.tasks || []).map(t => ({ id: t.id, name: t.name, priorityId: t.priority?.id, priorityLabel: t.priority?.priority, status: t.status?.status, list: t.list?.name }));
+    res.json({ userId, totalTasks: tasks.length, tasks });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get("/health", (req, res) => res.json({ ok: true }));
 app.listen(PORT, () => console.log("Denise backend on port " + PORT));
