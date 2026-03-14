@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Denise — Your PA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #F5F4F0;
+    --surface: #FFFFFF;
+    --surface2: #EEECE8;
+    --border: #DDD9D0;
+    --border-light: #E8E5DF;
+    --text: #1A1916;
+    --muted: #7A756A;
+    --dim: #B0AA9E;
+    --accent: #2563EB;
+    --accent-dim: #DBEAFE;
+    --accent-text: #1D4ED8;
+    --success: #16A34A;
+    --success-dim: #DCFCE7;
+    --success-text: #15803D;
+    --warn: #D97706;
+    --warn-dim: #FEF3C7;
+    --warn-text: #B45309;
+    --danger: #DC2626;
+    --danger-dim: #FEE2E2;
+    --danger-text: #B91C1C;
+    --purple: #7C3AED;
+    --purple-dim: #EDE9FE;
+    --purple-text: #6D28D9;
+    --fd: 'DM Mono', 'Courier New', monospace;
+    --fb: 'DM Sans', 'Segoe UI', sans-serif;
+    --radius: 10px;
+    --radius-lg: 14px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--fb); font-size: 16px; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: var(--surface2); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── Layout ── */
+  #app { min-height: 100vh; }
+  .header {
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface);
+    position: sticky; top: 0; z-index: 10;
+    box-shadow: var(--shadow);
+  }
+  .logo { font-family: var(--fd); font-size: 16px; font-weight: 500; letter-spacing: .06em; color: var(--text); }
+  .logo span { color: var(--dim); }
+  .dateline { font-family: var(--fd); font-size: 11px; color: var(--dim); letter-spacing: .06em; margin-top: 3px; }
+  .nav { display: flex; gap: 3px; background: var(--surface2); padding: 4px; border-radius: var(--radius); border: 1px solid var(--border); }
+  .nav-btn { padding: 8px 22px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-family: var(--fd); letter-spacing: .06em; background: transparent; color: var(--muted); transition: all .15s; font-weight: 500; }
+  .nav-btn.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+  .header-right { display: flex; align-items: center; gap: 14px; }
+  .sync-btn { padding: 9px 18px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 12px; font-family: var(--fd); cursor: pointer; letter-spacing: .05em; font-weight: 500; box-shadow: var(--shadow); transition: all .15s; }
+  .sync-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .sync-btn:disabled { color: var(--muted); cursor: not-allowed; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; }
+  .live { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--success); font-family: var(--fd); font-weight: 500; }
+  .sync-msg { font-size: 12px; font-family: var(--fd); color: var(--success); font-weight: 500; }
+  .reset-btn { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 11px; font-family: var(--fd); cursor: pointer; }
+  .reset-btn:hover { color: var(--danger); border-color: var(--danger); }
+
+  .body { padding: 28px 32px; max-width: 1100px; margin: 0 auto; }
+
+  /* ── Cards ── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 22px 26px; box-shadow: var(--shadow); }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .card-title { font-size: 11px; font-family: var(--fd); color: var(--muted); letter-spacing: .12em; text-transform: uppercase; font-weight: 500; }
+  .badge { font-size: 11px; font-family: var(--fd); padding: 4px 10px; border-radius: 6px; font-weight: 500; }
+  .badge-danger { background: var(--danger-dim); color: var(--danger-text); }
+  .badge-purple { background: var(--purple-dim); color: var(--purple-text); }
+  .badge-success { background: var(--success-dim); color: var(--success-text); }
+  .badge-warn { background: var(--warn-dim); color: var(--warn-text); }
+  .badge-accent { background: var(--accent-dim); color: var(--accent-text); }
+
+  /* ── Stats ── */
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-bottom: 22px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 22px; box-shadow: var(--shadow); }
+  .stat-label { font-size: 12px; font-family: var(--fd); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; font-weight: 500; }
+  .stat-val { font-size: 36px; font-weight: 600; font-family: var(--fd); line-height: 1; }
+
+  /* ── Grid ── */
+  .grid2 { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
+
+  /* ── Tasks ── */
+  .task-row { display: flex; align-items: center; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--border-light); cursor: pointer; transition: opacity .2s; }
+  .task-row:last-of-type { border-bottom: none; }
+  .task-row.done { opacity: .45; }
+  .task-row:hover { opacity: .85; }
+  .task-check { width: 18px; height: 18px; border-radius: 5px; flex-shrink: 0; border: 1.5px solid var(--border); background: var(--surface2); display: flex; align-items: center; justify-content: center; transition: all .15s; }
+  .task-check.checked { background: var(--success); border-color: var(--success); }
+  .task-text { flex: 1; font-size: 15px; color: var(--text); line-height: 1.4; }
+  .task-text.struck { text-decoration: line-through; color: var(--muted); }
+  .task-source { font-size: 10px; font-family: var(--fd); color: var(--purple); background: var(--purple-dim); padding: 2px 7px; border-radius: 4px; font-weight: 500; }
+  .task-due { font-size: 12px; font-family: var(--fd); color: var(--dim); white-space: nowrap; }
+  .task-due.overdue { color: var(--danger); font-weight: 600; }
+  .add-row { display: flex; gap: 10px; margin-top: 14px; }
+  .add-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; font-size: 14px; color: var(--text); font-family: var(--fb); outline: none; transition: border-color .15s; }
+  .add-input:focus { border-color: var(--accent); }
+  .add-btn { padding: 10px 18px; border-radius: var(--radius); border: none; background: var(--accent); color: #fff; cursor: pointer; font-size: 13px; font-family: var(--fd); font-weight: 500; transition: opacity .15s; }
+  .add-btn:hover { opacity: .88; }
+
+  /* ── Recordings ── */
+  .call-row { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: var(--radius); cursor: pointer; border: 1px solid transparent; transition: all .15s; }
+  .call-row:hover { background: var(--bg); }
+  .call-row.selected { border-color: rgba(37,99,235,.2); background: var(--accent-dim); }
+  .avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--fd); font-size: 12px; font-weight: 500; flex-shrink: 0; }
+  .call-info { flex: 1; }
+  .call-name { font-size: 15px; font-weight: 500; color: var(--text); }
+  .call-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .call-dur { font-size: 12px; font-family: var(--fd); color: var(--muted); }
+  .call-detail { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin: 6px 0 8px; font-size: 14px; color: var(--muted); line-height: 1.65; border-left-width: 3px; border-left-style: solid; }
+  .call-detail-title { font-family: var(--fd); font-size: 10px; letter-spacing: .1em; margin-bottom: 8px; font-weight: 500; }
+  .action-items-title { font-family: var(--fd); font-size: 10px; letter-spacing: .1em; color: var(--warn-text); margin: 10px 0 6px; padding-top: 10px; border-top: 1px solid var(--border); font-weight: 500; }
+
+  /* ── PA Chat ── */
+  .chat-wrap { max-width: 720px; margin: 0 auto; }
+  .denise-header { display: flex; align-items: center; gap: 14px; padding: 0 0 20px; }
+  .denise-avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--purple-dim); border: 2px solid rgba(124,58,237,.2); display: flex; align-items: center; justify-content: center; }
+  .denise-name { font-size: 20px; font-weight: 600; color: var(--text); }
+  .denise-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .chat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-md); }
+  .quick-prompts { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--border-light); background: var(--bg); }
+  .quick-btn { font-size: 12px; font-family: var(--fb); padding: 7px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: all .15s; font-weight: 500; }
+  .quick-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .messages { display: flex; flex-direction: column; gap: 14px; padding: 20px; overflow-y: auto; max-height: 460px; min-height: 220px; }
+  .msg { display: flex; gap: 12px; animation: fadeIn .2s ease; }
+  .msg.user { justify-content: flex-end; }
+  .msg-icon { width: 30px; height: 30px; border-radius: 50%; background: var(--purple-dim); border: 1px solid rgba(124,58,237,.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+  .msg-bubble { max-width: 78%; padding: 12px 16px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+  .msg-bubble.ai { border-radius: 4px 14px 14px 14px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+  .msg-bubble.user { border-radius: 14px 4px 14px 14px; background: var(--accent); color: #fff; }
+  .thinking { color: var(--muted); font-family: var(--fd); font-size: 12px; }
+  .chat-input-row { display: flex; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--border-light); background: var(--bg); }
+  .chat-input { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; font-size: 14px; color: var(--text); font-family: var(--fb); outline: none; transition: border-color .15s; }
+  .chat-input:focus { border-color: var(--accent); }
+  .send-btn { padding: 12px 22px; border-radius: var(--radius); border: none; background: var(--accent); color: #fff; cursor: pointer; font-size: 13px; font-family: var(--fd); letter-spacing: .05em; font-weight: 500; transition: opacity .15s; }
+  .send-btn:hover { opacity: .88; }
+  .ctx-bar { margin-top: 12px; padding: 10px 16px; background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); font-size: 12px; font-family: var(--fd); color: var(--muted); }
+
+  /* ── Setup Wizard ── */
+  #setup { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem; background: var(--bg); }
+  .wizard { width: 100%; max-width: 560px; }
+  .wiz-brand { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+  .wiz-brand-icon { width: 44px; height: 44px; border-radius: 50%; background: var(--purple-dim); border: 2px solid rgba(124,58,237,.2); display: flex; align-items: center; justify-content: center; }
+  .wiz-title { font-size: 24px; font-weight: 600; color: var(--text); }
+  .wiz-sub { font-size: 14px; color: var(--muted); margin-bottom: 28px; margin-top: 4px; }
+  .wiz-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 22px 26px; margin-bottom: 14px; transition: border-color .2s, box-shadow .2s; box-shadow: var(--shadow); }
+  .wiz-card.active { border-color: rgba(37,99,235,.35); box-shadow: 0 0 0 3px rgba(37,99,235,.06), var(--shadow); }
+  .wiz-card.dim { opacity: .35; pointer-events: none; }
+  .step-row { display: flex; align-items: center; gap: 14px; }
+  .step-row.has-content { margin-bottom: 16px; }
+  .step-num { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-family: var(--fd); font-weight: 500; flex-shrink: 0; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); transition: all .2s; }
+  .step-num.active { background: var(--accent-dim); color: var(--accent-text); border-color: rgba(37,99,235,.3); }
+  .step-num.done { background: var(--success-dim); color: var(--success-text); border-color: rgba(22,163,74,.3); }
+  .step-title { font-size: 15px; font-weight: 600; flex: 1; color: var(--text); }
+  .step-hint { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .wiz-input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; font-size: 14px; color: var(--text); font-family: var(--fd); outline: none; margin-bottom: 12px; letter-spacing: .03em; transition: border-color .15s; }
+  .wiz-input:focus { border-color: var(--accent); }
+  .wiz-note { font-size: 13px; color: var(--muted); line-height: 1.65; background: var(--bg); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px; border: 1px solid var(--border-light); }
+  .wiz-note a { color: var(--accent); }
+  .wiz-note code { font-family: var(--fd); font-size: 12px; background: var(--surface2); padding: 1px 5px; border-radius: 4px; }
+  .wiz-err { font-size: 13px; color: var(--danger); margin-bottom: 12px; line-height: 1.5; background: var(--danger-dim); padding: 10px 14px; border-radius: var(--radius); }
+  .wiz-ok { font-size: 13px; color: var(--success-text); margin-bottom: 12px; font-weight: 500; }
+  .btn-row { display: flex; gap: 10px; }
+  .wiz-btn { padding: 11px 22px; border-radius: var(--radius); border: none; cursor: pointer; font-size: 13px; font-family: var(--fd); letter-spacing: .05em; font-weight: 500; transition: all .15s; }
+  .wiz-btn:disabled { cursor: not-allowed; opacity: .45; }
+  .wiz-btn.primary { background: var(--accent); color: #fff; }
+  .wiz-btn.primary:hover:not(:disabled) { opacity: .88; }
+  .wiz-btn.secondary { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+  .wiz-btn.secondary:hover { color: var(--text); }
+  .copy-row { margin-bottom: 14px; }
+  .copy-label { font-size: 11px; font-family: var(--fd); color: var(--muted); letter-spacing: .08em; margin-bottom: 6px; text-transform: uppercase; font-weight: 500; }
+  .copy-box { display: flex; align-items: center; gap: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 11px 14px; }
+  .copy-val { flex: 1; font-size: 13px; font-family: var(--fd); color: var(--text); word-break: break-all; }
+  .copy-btn { flex-shrink: 0; padding: 5px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 12px; font-family: var(--fd); cursor: pointer; transition: all .15s; font-weight: 500; }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .copy-btn.copied { color: var(--success-text); border-color: var(--success); }
+  .status-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 22px; box-shadow: var(--shadow); }
+  .status-title { font-size: 11px; font-family: var(--fd); color: var(--muted); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 12px; font-weight: 500; }
+  .status-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border-light); font-size: 14px; color: var(--muted); }
+  .status-row:last-child { border-bottom: none; }
+  .status-row.ok { color: var(--text); }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--border); border: 1px solid var(--dim); }
+  .status-dot.ok { background: var(--success); border-color: var(--success); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const S = {
+  tab: 'dashboard',
+  tasks: [], calls: [],
+  stats: { open:0, done:0, overdue:0, totalCalls:0 },
+  selectedCall: null,
+  messages: [{ role:'ai', text:"Hi Ross! I'm Denise, your personal assistant. I'm connected to your Pocket device and across your tasks and recordings. How can I help you today?" }],
+  chatLoading: false,
+  syncing: false, syncMsg: null,
+  newTask: '',
+  wizStep: 1,
+  backendUrl: localStorage.getItem('pa_api_base') || '',
+  apiKey: '',
+  webhookSecret: '',
+  checkingBackend: false, backendErr: '',
+  verifyingKey: false, keyResult: null,
+  checkingWebhook: false, webhookResult: null,
+};
+
+function API() { return (localStorage.getItem('pa_api_base') || '').replace(/\/$/,''); }
+function isSetup() { return !!localStorage.getItem('pa_setup_done'); }
+
+function render() {
+  document.getElementById('app').innerHTML = isSetup() ? renderDashboard() : renderSetup();
+  bindEvents();
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function callColor(id) {
+  const colors = [['#2563EB','#DBEAFE'],['#16A34A','#DCFCE7'],['#D97706','#FEF3C7'],['#DC2626','#FEE2E2'],['#7C3AED','#EDE9FE']];
+  return colors[Math.abs((id||'').charCodeAt(0)||0) % 5];
+}
+function initials(call) { return (call.speakers?.[0]?.slice(0,2) || call.title?.slice(0,2) || '??').toUpperCase(); }
+function fmtDate(d) { try { return new Date(d).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}); } catch{ return ''; } }
+
+async function callClaude(system, msg) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1000, system, messages:[{role:'user',content:msg}] })
+  });
+  const data = await res.json();
+  return data.content?.[0]?.text || 'No response.';
+}
+
+async function fetchData() {
+  try {
+    const res = await fetch(`${API()}/api/data`);
+    const d = await res.json();
+    S.tasks = d.tasks||[]; S.calls = d.calls||[]; S.stats = d.stats||{};
+    render();
+  } catch{}
+}
+
+async function toggleTask(id) {
+  S.tasks = S.tasks.map(t => t.id===id ? {...t, status: t.status==='done'?'open':'done'} : t);
+  render();
+  try { await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH'}); } catch{}
+}
+
+async function addTask(text) {
+  if (!text.trim()) return;
+  const tmp = {id:'tmp_'+Date.now(), text:text.trim(), due:'Today', status:'open', source:'manual'};
+  S.tasks = [tmp,...S.tasks]; S.newTask=''; render();
+  try {
+    const res = await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim()})});
+    const saved = await res.json();
+    S.tasks = S.tasks.map(t => t.id===tmp.id ? saved : t); render();
+  } catch{}
+}
+
+async function syncPocket() {
+  S.syncing=true; render();
+  try {
+    const res = await fetch(`${API()}/api/sync`,{method:'POST'});
+    const d = await res.json();
+    S.syncMsg = d.message||d.error;
+    await fetchData();
+  } catch { S.syncMsg='Sync failed'; }
+  S.syncing=false; render();
+  setTimeout(()=>{ S.syncMsg=null; render(); },4000);
+}
+
+async function sendChat(msg) {
+  if (!msg.trim()||S.chatLoading) return;
+  S.messages.push({role:'user',text:msg});
+  S.chatLoading=true; render(); scrollChat();
+  const taskCtx = S.tasks.slice(0,15).map(t=>`- [${t.status}] ${t.text} (due: ${t.due})`).join('\n');
+  const callCtx = S.calls.slice(0,8).map(c=>`- "${c.title}": ${c.bulletPoints?.join('; ')||'no summary'}`).join('\n');
+  const system = `You are Denise, a sharp and friendly digital PA for Ross, who works in UK shipping logistics (Nino Logistics / Moov Parcel). Be concise, practical and warm. Max 120 words unless drafting something.\n\nTasks:\n${taskCtx||'None'}\n\nPocket recordings:\n${callCtx||'None'}`;
+  try {
+    const reply = await callClaude(system, msg);
+    S.messages.push({role:'ai',text:reply});
+  } catch { S.messages.push({role:'ai',text:'Could not reach API right now.'}); }
+  S.chatLoading=false; render(); scrollChat();
+}
+
+function scrollChat() { setTimeout(()=>{ const m=document.querySelector('.messages'); if(m) m.scrollTop=m.scrollHeight; },50); }
+
+async function wizCheckBackend() {
+  S.checkingBackend=true; S.backendErr=''; render();
+  try {
+    const url = S.backendUrl.replace(/\/$/,'');
+    const res = await fetch(`${url}/health`,{signal:AbortSignal.timeout(8000)});
+    if (!res.ok) throw new Error();
+    localStorage.setItem('pa_api_base',url);
+    S.wizStep=2;
+  } catch { S.backendErr='Could not reach that URL. Check Railway has finished deploying and the URL is correct.'; }
+  S.checkingBackend=false; render();
+}
+
+async function wizVerifyKey() {
+  const key = document.getElementById('apiKey')?.value || S.apiKey;
+  S.apiKey = key;
+  S.verifyingKey=true; S.keyResult=null; render();
+  try {
+    const res = await fetch(`${API()}/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});
+    const data = await res.json();
+    S.keyResult=data;
+    if (data.ok) {
+      await fetch(`${API()}/api/setup/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});
+      S.wizStep=3;
+    }
+  } catch { S.keyResult={ok:false,error:'Could not reach backend'}; }
+  S.verifyingKey=false; render();
+}
+
+async function wizCheckWebhook() {
+  S.checkingWebhook=true; S.webhookResult=null; render();
+  try {
+    const res = await fetch(`${API()}/api/setup/verify-webhook`,{method:'POST'});
+    const data = await res.json();
+    S.webhookResult=data;
+    if (data.ok) { localStorage.setItem('pa_setup_done','1'); setTimeout(()=>{ render(); fetchData(); startPolling(); },1000); }
+  } catch { S.webhookResult={ok:false,message:'Could not reach backend'}; }
+  S.checkingWebhook=false; render();
+}
+
+async function wizSkip() {
+  try { await fetch(`${API()}/api/setup/complete`,{method:'POST'}); } catch{}
+  localStorage.setItem('pa_setup_done','1');
+  render(); fetchData(); startPolling();
+}
+
+function copyText(text,btnId) {
+  navigator.clipboard.writeText(text);
+  const btn=document.getElementById(btnId);
+  if(btn){ btn.textContent='Copied!'; btn.classList.add('copied'); setTimeout(()=>{ btn.textContent='Copy'; btn.classList.remove('copied'); },2000); }
+}
+
+// ── Render: Setup ──────────────────────────────────────────────────────
+function renderSetup() {
+  const webhookUrl = S.backendUrl ? `${S.backendUrl.replace(/\/$/,'')}/webhook/pocket` : '';
+  return `
+  <div id="setup">
+    <div class="wizard">
+      <div class="wiz-brand">
+        <div class="wiz-brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        </div>
+        <div>
+          <div class="wiz-title">Meet Denise</div>
+        </div>
+      </div>
+      <div class="wiz-sub">Your personal AI assistant — three steps to get connected</div>
+
+      <div class="wiz-card ${S.wizStep===1?'active':''} ${S.wizStep<1?'dim':''}">
+        <div class="step-row ${S.wizStep===1?'has-content':''}">
+          <div class="step-num ${S.wizStep>1?'done':S.wizStep===1?'active':''}">${S.wizStep>1?'✓':'1'}</div>
+          <div style="flex:1">
+            <div class="step-title">Enter your Railway backend URL</div>
+            <div class="step-hint">The URL Railway gave you after deploying</div>
+          </div>
+          ${S.wizStep>1?'<span class="badge badge-success">Connected</span>':''}
+        </div>
+        ${S.wizStep===1?`
+          <input class="wiz-input" id="backendUrl" type="text" value="${esc(S.backendUrl)}" placeholder="https://your-app.up.railway.app" />
+          ${S.backendErr?`<div class="wiz-err">${esc(S.backendErr)}</div>`:''}
+          <div class="btn-row">
+            <button class="wiz-btn primary" id="btnCheckBackend">${S.checkingBackend?'Connecting...':'Connect →'}</button>
+          </div>
+          <div class="wiz-note" style="margin-top:14px">
+            Don't have a Railway URL yet? Deploy <code>server.js</code> and <code>package.json</code> to <a href="https://railway.app" target="_blank">railway.app</a>, then paste the URL here.
+          </div>
+        `:''}
+      </div>
+
+      <div class="wiz-card ${S.wizStep===2?'active':''} ${S.wizStep<2?'dim':''}">
+        <div class="step-row ${S.wizStep===2?'has-content':''}">
+          <div class="step-num ${S.wizStep>2?'done':S.wizStep===2?'active':''}">${S.wizStep>2?'✓':'2'}</div>
+          <div style="flex:1">
+            <div class="step-title">Paste your Pocket API key</div>
+            <div class="step-hint">Pocket app → Developer settings → API key</div>
+          </div>
+          ${S.wizStep>2&&S.keyResult?.ok?`<span class="badge badge-success">${S.keyResult.recordingCount} recordings found</span>`:''}
+        </div>
+        ${S.wizStep===2?`
+          <input class="wiz-input" id="apiKey" type="text" value="${esc(S.apiKey)}" placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+          ${S.keyResult&&!S.keyResult.ok?`<div class="wiz-err">${esc(S.keyResult.error)}</div>`:''}
+          <div class="btn-row">
+            <button class="wiz-btn primary" id="btnVerifyKey">${S.verifyingKey?'Verifying...':'Verify key →'}</button>
+          </div>
+        `:''}
+      </div>
+
+      <div class="wiz-card ${S.wizStep===3?'active':''} ${S.wizStep<3?'dim':''}">
+        <div class="step-row ${S.wizStep===3?'has-content':''}">
+          <div class="step-num ${S.wizStep===3?'active':''}">3</div>
+          <div style="flex:1">
+            <div class="step-title">Connect your Pocket device</div>
+            <div class="step-hint">Pocket app → Developer settings → Webhook</div>
+          </div>
+        </div>
+        ${S.wizStep===3?`
+          <div class="copy-row">
+            <div class="copy-label">Webhook URL — paste into Pocket developer settings</div>
+            <div class="copy-box">
+              <span class="copy-val">${esc(webhookUrl)}</span>
+              <button class="copy-btn" id="copyUrl" onclick="copyText('${esc(webhookUrl)}','copyUrl')">Copy</button>
+            </div>
+          </div>
+          <div class="wiz-note">Paste the webhook URL above into the Pocket app developer settings and save. Then make a short test recording. Once it syncs, click Verify below.</div>
+          ${S.webhookResult&&!S.webhookResult.ok?`<div class="wiz-err">${esc(S.webhookResult.message)}</div>`:''}
+          ${S.webhookResult?.ok?`<div class="wiz-ok">✓ Webhook working — taking you to Denise...</div>`:''}
+          <div class="btn-row">
+            <button class="wiz-btn primary" id="btnCheckWebhook">${S.checkingWebhook?'Checking...':'Verify connection'}</button>
+            <button class="wiz-btn secondary" id="btnSkip">Skip for now</button>
+          </div>
+        `:''}
+      </div>
+
+      <div class="status-card">
+        <div class="status-title">Connection status</div>
+        ${[['Backend reachable',S.wizStep>1],['Pocket API key verified',S.wizStep>2],['Webhook configured',!!S.webhookResult?.ok]].map(([label,ok])=>`
+          <div class="status-row ${ok?'ok':''}">
+            <div class="status-dot ${ok?'ok':''}"></div>
+            ${esc(label)}
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── Render: Dashboard ──────────────────────────────────────────────────
+function renderDashboard() {
+  const overdue = S.tasks.filter(t=>t.status==='overdue').length;
+  const today = new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+  return `
+  <div>
+    <div class="header">
+      <div>
+        <div class="logo">DENISE <span>/ ROSS'S PA</span></div>
+        <div class="dateline">${today.toUpperCase()}</div>
+      </div>
+      <div class="nav">
+        <button class="nav-btn ${S.tab==='dashboard'?'active':''}" data-tab="dashboard">DASHBOARD</button>
+        <button class="nav-btn ${S.tab==='pa'?'active':''}" data-tab="pa">CHAT WITH DENISE</button>
+      </div>
+      <div class="header-right">
+        ${S.syncMsg?`<span class="sync-msg">${esc(S.syncMsg)}</span>`:''}
+        <button class="sync-btn" id="btnForceSync" ${S.syncing?'disabled':''} style="color:var(--accent-text);border-color:rgba(37,99,235,.3)">${S.syncing?'Syncing...':'↻ Refresh all'}</button>
+        <button class="sync-btn" id="btnSync" ${S.syncing?'disabled':''}>${S.syncing?'Syncing...':'↓ Sync Pocket'}</button>
+        <div class="live"><div class="live-dot"></div>Live</div>
+        <button class="reset-btn" id="btnReset">Reset</button>
+      </div>
+    </div>
+    <div class="body">
+      ${S.tab==='dashboard' ? renderDashTab(overdue) : renderPATab()}
+    </div>
+  </div>`;
+}
+
+function renderDashTab(overdue) {
+  return `
+    <div class="stats">
+      ${[['Open tasks',S.stats.open||0,'var(--accent)'],['Completed',S.stats.done||0,'var(--success)'],['Overdue',overdue||S.stats.overdue||0,'var(--danger)'],['Recordings',S.stats.totalCalls||0,'var(--purple)']].map(([label,val,color])=>`
+        <div class="stat">
+          <div class="stat-label">${label}</div>
+          <div class="stat-val" style="color:${color}">${val}</div>
+        </div>`).join('')}
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Task board</span>
+          <span class="badge badge-danger">${overdue||S.stats.overdue||0} overdue</span>
+        </div>
+        ${S.tasks.length===0?'<div style="font-size:14px;color:var(--muted);padding:8px 0 12px">No tasks yet — sync your Pocket or add one below.</div>':''}
+        ${S.tasks.slice(0,10).map(t=>`
+          <div class="task-row ${t.status==='done'?'done':''}" data-toggle="${esc(t.id)}">
+            <div class="task-check ${t.status==='done'?'checked':''}">${t.status==='done'?`<svg width="10" height="8" viewBox="0 0 10 8"><polyline points="1,4 4,7 9,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}</div>
+            <span class="task-text ${t.status==='done'?'struck':''}">${esc(t.text)}</span>
+            ${t.source==='pocket'?'<span class="task-source">POCKET</span>':''}
+            <span class="task-due ${t.status==='overdue'?'overdue':''}">${esc(t.due)}</span>
+          </div>`).join('')}
+        <div class="add-row">
+          <input class="add-input" id="newTask" placeholder="Add a task..." value="${esc(S.newTask)}" />
+          <button class="add-btn" id="btnAddTask">+ Add</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Recordings</span>
+          <span class="badge badge-purple">${S.calls.length} total</span>
+        </div>
+        ${S.calls.length===0?'<div style="font-size:14px;color:var(--muted);padding:8px 0">No recordings yet. Press Sync Pocket or make a recording on your device.</div>':''}
+        ${S.calls.slice(0,6).map(call=>{
+          const [fg,bg] = callColor(call.id);
+          const sel = S.selectedCall?.id===call.id;
+          return `
+            <div class="call-row ${sel?'selected':''}" data-call="${esc(call.id)}">
+              <div class="avatar" style="background:${bg};color:${fg}">${esc(initials(call))}</div>
+              <div class="call-info">
+                <div class="call-name">${esc(call.title)}</div>
+                <div class="call-sub">${esc(fmtDate(call.createdAt))}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div>
+              </div>
+            </div>
+            ${sel?`
+              <div class="call-detail" style="border-left-color:${fg}">
+                <div class="call-detail-title" style="color:${fg}">SUMMARY — ${esc(call.title?.toUpperCase()||'')}</div>
+                ${call.bulletPoints?.length>0 ? call.bulletPoints.map(b=>`<div style="margin-bottom:4px">· ${esc(b)}</div>`).join('') : call.summary ? `<div style="white-space:pre-wrap">${esc(call.summary)}</div>` : 'No summary yet.'}
+                ${call.actionItems?.length>0?`
+                  <div class="action-items-title">ACTION ITEMS</div>
+                  ${call.actionItems.map(a=>`<div style="margin-bottom:3px">→ ${esc(a.title)}</div>`).join('')}
+                `:''}
+                ${call.transcript?`
+                  <div class="action-items-title" style="color:var(--accent-text)">TRANSCRIPT</div>
+                  <div style="white-space:pre-wrap;font-size:13px;max-height:200px;overflow-y:auto;line-height:1.6">${esc(call.transcript)}</div>
+                `:''}
+              </div>
+            `:''}`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function renderPATab() {
+  return `
+    <div class="chat-wrap">
+      <div class="denise-header">
+        <div class="denise-avatar">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        </div>
+        <div>
+          <div class="denise-name">Denise</div>
+          <div class="denise-sub">Your personal AI assistant · ${S.tasks.length} tasks · ${S.calls.length} recordings</div>
+        </div>
+      </div>
+      <div class="chat-card">
+        <div class="quick-prompts">
+          ${['What should I tackle first today?','Summarise my most recent recording','What action items came from my calls?','Draft a follow-up for my last call'].map(q=>`
+            <button class="quick-btn" data-quick="${esc(q)}">${esc(q)}</button>`).join('')}
+        </div>
+        <div class="messages" id="messages">
+          ${S.messages.map(m=>`
+            <div class="msg ${m.role}">
+              ${m.role==='ai'?`<div class="msg-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>`:''}
+              <div class="msg-bubble ${m.role}">${esc(m.text)}</div>
+            </div>`).join('')}
+          ${S.chatLoading?`
+            <div class="msg ai">
+              <div class="msg-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
+              <div class="msg-bubble ai"><span class="thinking">Denise is thinking...</span></div>
+            </div>`:''}
+        </div>
+        <div class="chat-input-row">
+          <input class="chat-input" id="chatInput" placeholder="Ask Denise anything..." />
+          <button class="send-btn" id="btnSend">Send</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Events ─────────────────────────────────────────────────────────────
+function bindEvents() {
+  document.querySelectorAll('[data-tab]').forEach(btn=>{
+    btn.addEventListener('click',()=>{ S.tab=btn.dataset.tab; render(); });
+  });
+
+  const urlInput = document.getElementById('backendUrl');
+  if (urlInput) urlInput.addEventListener('input',e=>{ S.backendUrl=e.target.value; });
+  const btnCheckBackend = document.getElementById('btnCheckBackend');
+  if (btnCheckBackend) btnCheckBackend.addEventListener('click',()=>{ S.backendUrl=document.getElementById('backendUrl')?.value||S.backendUrl; wizCheckBackend(); });
+
+  const keyInput = document.getElementById('apiKey');
+  if (keyInput) keyInput.addEventListener('input',e=>{ S.apiKey=e.target.value; });
+  const btnVerifyKey = document.getElementById('btnVerifyKey');
+  if (btnVerifyKey) btnVerifyKey.addEventListener('click',()=>{ S.apiKey=document.getElementById('apiKey')?.value||S.apiKey; wizVerifyKey(); });
+
+  const btnCheckWebhook = document.getElementById('btnCheckWebhook');
+  if (btnCheckWebhook) btnCheckWebhook.addEventListener('click',wizCheckWebhook);
+  const btnSkip = document.getElementById('btnSkip');
+  if (btnSkip) btnSkip.addEventListener('click',wizSkip);
+
+  const btnSync = document.getElementById('btnSync');
+  if (btnSync) btnSync.addEventListener('click',syncPocket);
+  const btnForceSync = document.getElementById('btnForceSync');
+  if (btnForceSync) btnForceSync.addEventListener('click', async ()=>{
+    S.syncing=true; render();
+    try {
+      const res = await fetch(`${API()}/api/sync/force`,{method:'POST'});
+      const d = await res.json();
+      S.syncMsg = d.message||d.error;
+      await fetchData();
+    } catch { S.syncMsg='Sync failed'; }
+    S.syncing=false; render();
+    setTimeout(()=>{ S.syncMsg=null; render(); },5000);
+  });
+  const btnReset = document.getElementById('btnReset');
+  if (btnReset) btnReset.addEventListener('click',()=>{
+    if (confirm('Reset Denise? You will need to re-enter your details.')) {
+      localStorage.removeItem('pa_setup_done'); localStorage.removeItem('pa_api_base');
+      S.wizStep=1; S.apiKey=''; S.webhookSecret=''; S.keyResult=null; S.webhookResult=null;
+      S.tasks=[]; S.calls=[]; render();
+    }
+  });
+
+  document.querySelectorAll('[data-toggle]').forEach(row=>{
+    row.addEventListener('click',()=>toggleTask(row.dataset.toggle));
+  });
+
+  const newTaskInput = document.getElementById('newTask');
+  if (newTaskInput) {
+    newTaskInput.addEventListener('input',e=>S.newTask=e.target.value);
+    newTaskInput.addEventListener('keydown',e=>{ if(e.key==='Enter') addTask(newTaskInput.value); });
+  }
+  const btnAdd = document.getElementById('btnAddTask');
+  if (btnAdd) btnAdd.addEventListener('click',()=>addTask(document.getElementById('newTask')?.value||''));
+
+  document.querySelectorAll('[data-call]').forEach(row=>{
+    row.addEventListener('click',()=>{
+      const call = S.calls.find(c=>c.id===row.dataset.call);
+      S.selectedCall = S.selectedCall?.id===row.dataset.call ? null : call;
+      render();
+    });
+  });
+
+  const chatInput = document.getElementById('chatInput');
+  if (chatInput) chatInput.addEventListener('keydown',e=>{ if(e.key==='Enter'){ sendChat(chatInput.value); chatInput.value=''; } });
+  const btnSend = document.getElementById('btnSend');
+  if (btnSend) btnSend.addEventListener('click',()=>{ const i=document.getElementById('chatInput'); if(i){ sendChat(i.value); i.value=''; } });
+
+  document.querySelectorAll('[data-quick]').forEach(btn=>{
+    btn.addEventListener('click',()=>{ const i=document.getElementById('chatInput'); if(i) i.value=btn.dataset.quick; });
+  });
+
+  scrollChat();
+}
+
+let pollInterval = null;
+function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(fetchData, 30000);
+}
+
+render();
+if (isSetup()) { fetchData(); startPolling(); }
+</script>
+</body>
+</html>
