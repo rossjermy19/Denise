@@ -149,9 +149,14 @@ app.get("/api/clickup/priority-tasks", async (req, res) => {
     const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
     console.log("Urgent tasks:", d1.tasks?.length, "High tasks:", d2.tasks?.length);
 
+    // Filter server-side by assignee in case the API param is ignored
+    const myUrgent = (d1.tasks || []).filter(t => (t.assignees || []).some(a => String(a.id) === String(userId)));
+    const myHigh = (d2.tasks || []).filter(t => (t.assignees || []).some(a => String(a.id) === String(userId)));
+    console.log(`After filtering: ${myUrgent.length} urgent, ${myHigh.length} high for userId ${userId}`);
+
     const tasks = [
-      ...(d1.tasks || []).map(t => ({ ...t, _pl: "urgent" })),
-      ...(d2.tasks || []).map(t => ({ ...t, _pl: "high" }))
+      ...myUrgent.map(t => ({ ...t, _pl: "urgent" })),
+      ...myHigh.map(t => ({ ...t, _pl: "high" }))
     ].map(t => ({
       id: t.id,
       name: t.name,
