@@ -207,5 +207,6 @@ app.post("/webhook/pocket", (req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/webhook/pocket", (req, res) => res.json({ ok: true }));
 app.get("/health", (req, res) => res.json({ ok: true }));
 app.listen(PORT, () => console.log("Denise backend on port " + PORT));
