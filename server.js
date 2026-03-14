@@ -209,34 +209,73 @@ app.put("/api/clickup/tasks/:id/complete", async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Gmail proxy — route through backend to avoid CORS ────────────────
+// ── Gmail via Atom feed ───────────────────────────────────────────────
 app.post("/api/gmail/fetch", async (req, res) => {
-  const apiKey = ANTHROPIC_API_KEY || req.headers["x-anthropic-key"];
-  if (!apiKey) return res.status(400).json({ error: "No Anthropic API key configured" });
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) return res.status(400).json({ error: "GMAIL_USER and GMAIL_APP_PASSWORD not set in Railway" });
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-beta": "mcp-client-2025-04-04" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4000,
-        system: `You have access to Gmail for ross.jermy@moovparcel.co.uk via the Gmail MCP tool.
-Fetch the 20 most recent inbox emails. For each email determine if it NEEDS_REPLY (direct questions, requests for action, client/supplier emails awaiting response).
-Return ONLY valid JSON with NO other text, NO markdown, NO backticks:
-{"emails":[{"id":"string","from":"Full Name <email>","fromName":"Full Name","fromEmail":"email","subject":"subject","snippet":"first 120 chars","body":"plain text up to 400 chars","date":"14 Mar","time":"14:32","unread":true,"needsReply":true,"replyReason":"short reason or null"}]}`,
-        messages: [{ role: "user", content: "Fetch the 20 most recent emails from the Gmail inbox and return as JSON." }],
-        mcp_servers: [{ type: "url", url: "https://gmail.mcp.claude.com/mcp", name: "gmail" }]
-      })
+    const creds = Buffer.from(`${user}:${pass}`).toString("base64");
+    const r = await fetch("https://mail.google.com/mail/feed/atom", {
+      headers: { Authorization: `Basic ${creds}`, Accept: "application/atom+xml" }
     });
-    const data = await response.json();
-    if (data.error) return res.status(400).json({ error: data.error.message || "Anthropic API error" });
-    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-    const clean = text.replace(/```json|```/g, "").trim();
-    const match = clean.match(/\{[\s\S]*\}/);
-    if (!match) return res.status(400).json({ error: "Could not parse Gmail response", raw: clean.slice(0, 200) });
-    const parsed = JSON.parse(match[0]);
-    res.json(parsed);
-  } catch(e) { console.error("Gmail proxy error:", e.message); res.status(500).json({ error: e.message }); }
+    if (!r.ok) return res.status(400).json({ error: `Gmail returned ${r.status} — check credentials` });
+    const xml = await r.text();
+
+    // Parse Atom XML
+    const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map(m => {
+      const entry = m[1];
+      const get = tag => { const m = entry.match(new RegExp(`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`)); return m ? m[1].trim() : ""; };
+      const getAttr = (tag, attr) => { const m = entry.match(new RegExp(`<${tag}[^>]*${attr}="([^"]*?)"`)); return m ? m[1] : ""; };
+      const from = entry.match(/<author>([\s\S]*?)<\/author>/);
+      const fromName = from ? (from[1].match(/<name>([\s\S]*?)<\/name>/)?.[1] || "") : "";
+      const fromEmail = from ? (from[1].match(/<email>([\s\S]*?)<\/email>/)?.[1] || "") : "";
+      const issued = get("issued") || get("modified") || "";
+      const dt = issued ? new Date(issued) : new Date();
+      return {
+        id: get("id"),
+        subject: get("title") || "(no subject)",
+        fromName: fromName.trim(),
+        fromEmail: fromEmail.trim(),
+        from: `${fromName.trim()} <${fromEmail.trim()}>`,
+        snippet: get("summary").slice(0, 120),
+        body: get("summary").slice(0, 400),
+        date: dt.toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+        time: dt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+        unread: true,
+        needsReply: false,
+        replyReason: null,
+      };
+    });
+
+    // Use Anthropic to flag which emails need replies
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (apiKey && entries.length > 0) {
+      try {
+        const ctx = entries.map((e, i) => `${i+1}. From: ${e.fromName} <${e.fromEmail}> | Subject: ${e.subject} | Preview: ${e.snippet}`).join("
+");
+        const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 500,
+            system: "You are analysing emails for Ross Jermy at Moov Parcel (UK shipping logistics). Return ONLY a JSON array of numbers (1-based indexes) of emails that need a reply — i.e. contain questions, requests, or require action from Ross. Example: [1,3,5]. No other text.",
+            messages: [{ role: "user", content: `Which of these emails need a reply?
+${ctx}` }]
+          })
+        });
+        const aiData = await aiRes.json();
+        const aiText = (aiData.content || []).find(b => b.type === "text")?.text || "[]";
+        const needsReplyIndexes = JSON.parse(aiText.match(/\[[\s\S]*\]/)?.[0] || "[]");
+        needsReplyIndexes.forEach(idx => {
+          if (entries[idx-1]) entries[idx-1].needsReply = true;
+        });
+      } catch(e) { console.error("AI flagging error:", e.message); }
+    }
+
+    res.json({ emails: entries });
+  } catch(e) { console.error("Gmail feed error:", e.message); res.status(500).json({ error: e.message }); }
 });
 
 // ── Webhook ───────────────────────────────────────────────────────────
