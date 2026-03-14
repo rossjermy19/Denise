@@ -7,7 +7,8 @@ const PORT = process.env.PORT || 3001;
 const POCKET_BASE = "https://public.heypocketai.com/api/v1";
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: "*", methods: ["GET","POST","PATCH","DELETE","OPTIONS"], allowedHeaders: ["Content-Type","Authorization"] }));
+app.options("*", cors());
 app.use("/webhook", express.raw({ type: "application/json" }));
 app.use(express.json());
 
