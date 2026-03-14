@@ -315,16 +315,21 @@ async function fetchEmailBody(emailId){
 async function generateAlerts(){
   S.alertsLoading=true;S.alertsGenerated=true;render();
   try{
-    const emailCtx=S.emails.slice(0,15).map((e,i)=>`${i+1}. From: ${e.from_name||e.from_email} | Subject: ${e.subject} | Preview: ${e.snippet} | Unread: ${e.is_unread}`).join('\n');
-    const cuCtx=S.cuTasks.slice(0,10).map(t=>`- ${t.name} [${t.status?.status}] priority: ${t.priority?.priority||'normal'} due: ${t.due_date?new Date(parseInt(t.due_date)).toLocaleDateString('en-GB'):'none'}`).join('\n');
+    const emailCtx=S.emails.slice(0,20).map((e,i)=>`${i+1}. From: ${e.from_name||e.from_email} <${e.from_email}> | Subject: ${e.subject} | Preview: ${e.snippet} | Unread: ${e.is_unread}`).join('\n');
     const reply=await callClaude(
-      'You are Denise, PA for Ross at Nino Logistics/Moov Parcel UK. Analyse emails and tasks. Return ONLY a JSON array (no markdown) of up to 5 most important action items. Each: {type:"email"|"task"|"urgent", title:string(max 10 words), reason:string(max 20 words), email_index:number|null(1-based), priority:"high"|"medium"}',
-      `Emails:\n${emailCtx}\n\nClickUp tasks:\n${cuCtx||'Not loaded'}`
+      'You are Denise, PA for Ross Jermy at Moov Parcel (UK shipping logistics). Analyse these emails and identify which ones need a reply — direct questions, requests, client/supplier emails awaiting action, anything requiring a decision. Return ONLY valid JSON with no other text: {"needsReply":[1,3,5],"alerts":[{"type":"email","title":"string max 8 words","reason":"string max 15 words","email_index":1,"priority":"high"}]}. needsReply is an array of 1-based email indexes. alerts contains up to 5 most urgent items.',
+      `Emails:\n${emailCtx}`
     );
     const clean=reply.replace(/```json|```/g,'').trim();
-    const idx=clean.indexOf('[');
-    S.emailAlerts=JSON.parse(idx>=0?clean.slice(idx):clean);
-  }catch(e){S.emailAlerts=[];}
+    const match=clean.match(/\{[\s\S]*\}/);
+    if(match){
+      const parsed=JSON.parse(match[0]);
+      // Mark needsReply on email objects
+      S.emails.forEach((e,i)=>{ e.needsReply=false; });
+      (parsed.needsReply||[]).forEach(idx=>{ if(S.emails[idx-1]) S.emails[idx-1].needsReply=true; });
+      S.emailAlerts=parsed.alerts||[];
+    }
+  }catch(e){console.error('Alerts:',e);S.emailAlerts=[];}
   S.alertsLoading=false;render();
 }
 
@@ -485,33 +490,91 @@ function renderDash(){
 }
 
 function renderDashTab(overdue,unread){
+  const needsReply = S.emails.filter(e=>e.is_unread||e.needsReply).sort((a,b)=>{
+    // Sort: needsReply first, then unread, then rest
+    if(a.needsReply&&!b.needsReply)return -1;
+    if(!a.needsReply&&b.needsReply)return 1;
+    if(a.is_unread&&!b.is_unread)return -1;
+    if(!a.is_unread&&b.is_unread)return 1;
+    return 0;
+  });
   const hi=S.emailAlerts.filter(a=>a.priority==='high');
+
   return `
+  <!-- 4 stat tiles -->
   <div class="stats">
     <div class="stat"><div class="slbl">Pocket tasks</div><div class="sval" style="color:var(--accent)">${S.stats.open||0}</div></div>
     <div class="stat"><div class="slbl">Overdue</div><div class="sval" style="color:var(--danger)">${overdue||0}</div></div>
     <div class="stat"><div class="slbl">Unread emails</div><div class="sval" style="color:var(--teal)">${unread}</div></div>
     <div class="stat"><div class="slbl">Recordings</div><div class="sval" style="color:var(--purple)">${S.stats.totalCalls||0}</div></div>
   </div>
-  ${S.alertsLoading?`<div class="card" style="margin-bottom:14px"><div class="ldr"><div class="spinner"></div>Denise is scanning your emails and tasks...</div></div>`:
-    hi.length>0?`<div class="card" style="margin-bottom:14px"><div class="chdr"><span class="ctitle">Needs your attention</span><span class="bdg bd">${hi.length} urgent</span></div>
-    ${hi.map(a=>`<div class="arow"><div class="aico" style="background:${a.type==='email'?'var(--teal-dim)':'var(--warn-dim)'}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${a.type==='email'?'var(--teal-text)':'var(--warn-text)'}" stroke-width="2">${a.type==='email'?'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 7 10-7"/>':'<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>'}</svg></div><div style="flex:1"><div class="atitle">${esc(a.title)}</div><div class="asub">${esc(a.reason)}</div>${a.type==='email'&&a.email_index?`<button class="aact" data-goto-email="${a.email_index-1}">Open email →</button>`:''}</div></div>`).join('')}
-    </div>`:
-    !S.alertsGenerated?`<div class="card" style="margin-bottom:14px"><div style="font-size:13px;color:var(--muted);padding:4px 0">Open <strong>Gmail</strong> tab to load your inbox — Denise will flag what needs your attention.</div></div>`:''}
-  <div class="g3">
-    <div class="card">
-      <div class="chdr"><span class="ctitle">Pocket tasks</span><span class="bdg bd">${overdue||0} overdue</span></div>
-      ${S.tasks.length===0?'<div style="font-size:13px;color:var(--muted)">No tasks yet.</div>':''}
-      ${S.tasks.slice(0,7).map(t=>{const done=t.status==='done',ov=t.status==='overdue';return`<div class="trow ${done?'done':''}" data-toggle="${esc(t.id)}"><div class="tchk ${done?'done':''}">${done?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><span class="ttxt ${done?'done':''}">${esc(t.text)}</span>${t.source==='pocket'?'<span class="tsrc">POCKET</span>':''}<span class="tdue ${ov?'ov':''}">${esc(t.due)}</span></div>`;}).join('')}
-      <div class="addrow"><input class="addinp" id="newTask" placeholder="Add a task..." /><button class="addbtn" id="btnAddTask">+ Add</button></div>
+
+  <!-- Priority emails section -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="chdr">
+      <span class="ctitle">Emails needing attention</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        ${needsReply.length>0?`<span class="bdg bd">${needsReply.length} to action</span>`:`<span class="bdg bt">${unread} unread</span>`}
+        <button style="padding:4px 10px;border-radius:var(--r);border:1px solid var(--border);background:transparent;font-size:11px;font-family:var(--fd);color:var(--muted);cursor:pointer" id="btnRefreshEmail">↻</button>
+      </div>
     </div>
-    <div class="card">
-      <div class="chdr"><span class="ctitle">Recent emails</span><span class="bdg bt">${S.emails.filter(e=>e.is_unread).length} unread</span></div>
-      ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading Gmail...</div>`:S.emails.length===0?`<div style="font-size:13px;color:var(--muted)">No emails loaded.<br><button style="margin-top:8px;padding:7px 14px;border-radius:var(--r);border:1px solid var(--border);background:transparent;color:var(--accent);font-size:12px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail">Load Gmail</button></div>`:
-      S.emails.slice(0,6).map((e,i)=>`<div class="erow ${e.is_unread?'unread':''}" data-email="${i}" style="padding:6px 8px"><div class="edot ${e.is_unread?'':'read'}"></div><div class="einfo"><div class="esender">${esc(e.from_name||e.from_email)}</div><div class="esubj">${esc(e.subject)}</div></div><div class="etime">${esc(fmtEmailDate(e.date))}</div></div>`).join('')}
+    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Scanning your inbox...</div>`:
+      S.emails.length===0?`
+        <div style="font-size:13px;color:var(--muted);padding:4px 0">Load your Gmail inbox — Denise will flag emails needing a reply.</div>
+        <button style="margin-top:10px;padding:8px 18px;border-radius:var(--r);border:none;background:var(--accent);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnLoadEmail">Load Gmail</button>
+      `:needsReply.length===0?`
+        <div style="font-size:13px;color:var(--muted);padding:4px 0">✓ No emails currently need a reply.</div>
+        <div style="margin-top:10px">${S.emails.slice(0,5).map((e,i)=>`
+          <div class="erow ${e.is_unread?'unread':''}" data-email="${i}" style="padding:7px 8px">
+            <div class="edot ${e.is_unread?'':'read'}"></div>
+            <div class="einfo"><div class="esender">${esc(e.from_name||e.from_email)}</div><div class="esubj">${esc(e.subject)}</div></div>
+            <div class="etime">${esc(fmtEmailDate(e.date))}</div>
+          </div>`).join('')}
+        </div>
+      `:`
+        ${needsReply.map((e,i)=>{
+          const origIdx=S.emails.indexOf(e);
+          const urgent=e.needsReply;
+          return`<div class="erow ${e.is_unread?'unread':''}" data-email="${origIdx}" style="padding:9px 10px;border-radius:var(--r);margin-bottom:6px;background:${urgent?'var(--warn-dim)':'var(--bg)'}">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+                ${urgent?`<span style="font-size:10px;font-family:var(--fd);background:var(--warn-text);color:white;padding:2px 7px;border-radius:20px;font-weight:600">REPLY NEEDED</span>`:`<span style="font-size:10px;font-family:var(--fd);background:var(--teal);color:white;padding:2px 7px;border-radius:20px;font-weight:600">UNREAD</span>`}
+                <span style="font-size:12px;color:var(--muted);font-family:var(--fd)">${esc(fmtEmailDate(e.date))}</span>
+              </div>
+              <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:2px">${esc(e.from_name||e.from_email)}</div>
+              <div style="font-size:13px;color:var(--text);margin-bottom:3px">${esc(e.subject)}</div>
+              <div style="font-size:12px;color:var(--muted)">${esc((e.snippet||'').slice(0,100))}</div>
+            </div>
+            <button style="flex-shrink:0;margin-left:12px;padding:6px 12px;border-radius:var(--r);border:1px solid var(--border);background:white;font-size:12px;font-family:var(--fd);cursor:pointer;color:var(--accent)" data-email="${origIdx}">Open →</button>
+          </div>`;
+        }).join('')}
+      `}
+  </div>
+
+  <!-- Recordings section -->
+  <div class="card">
+    <div class="chdr">
+      <span class="ctitle">Recent recordings</span>
+      <span class="bdg" style="background:var(--purple-dim);color:var(--purple)">${S.stats.totalCalls||0} total</span>
     </div>
+    ${S.calls.length===0?`<div style="font-size:13px;color:var(--muted)">No recordings yet. Make a recording on your Pocket device.</div>`:`
+      ${S.calls.slice(0,5).map(call=>{
+        const bg=['#E8F0FE','#FCE8F3','#E6F4EA','#FEF7E0','#F3E8FF'][Math.abs(call.title.charCodeAt(0))%5];
+        const fg=['#1A73E8','#D4006A','#188038','#E37400','#7B1FA2'][Math.abs(call.title.charCodeAt(0))%5];
+        const initials=(call.title||'?').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+        return`<div class="call-row" data-call="${esc(call.id)}" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-light);cursor:pointer">
+          <div style="width:38px;height:38px;border-radius:10px;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0">${initials}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(call.title)}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtDate(call.createdAt)}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div>
+          </div>
+          ${call.bulletPoints?.length>0?`<span style="font-size:11px;font-family:var(--fd);padding:3px 8px;border-radius:20px;background:var(--teal-dim);color:var(--teal-text)">summary</span>`:`<span style="font-size:11px;font-family:var(--fd);padding:3px 8px;border-radius:20px;background:var(--bg);color:var(--muted)">no summary</span>`}
+        </div>`;
+      }).join('')}
+    `}
   </div>`;
 }
+
 
 function renderGmailTab(){
   const sel=S.selectedEmail;
