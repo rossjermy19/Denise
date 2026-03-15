@@ -321,7 +321,7 @@ const S={
   emailAlerts:[],alertsLoading:false,alertsGenerated:false,
   composingReply:null,replyDraft:'',sendSuccess:null,
   cuTasks:[],cuLoading:false,cuCompleted:{},
-  calEvents:[],calLoading:false,calDayOffset:0,
+  calEvents:[],calLoading:false,calDayOffset:0,calError:null,
   weather:null,weatherLoading:false,
   messages:[{role:'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket and Gmail. Ask me what needs your attention today, or anything else."}],
   chatLoading:false,
@@ -549,6 +549,16 @@ async function fetchCalendar(){
       headers: { 'Authorization': 'Bearer ' + token }
     });
     const calListData = await calListRes.json();
+    if(calListData.error){
+      console.error('[Denise] CalendarList API error:', calListData.error.message);
+      if(calListData.error.code === 403 && calListData.error.message?.includes('not been used in project')){
+        S.calError = 'Enable Google Calendar API in your Cloud Console for this project';
+      } else {
+        S.calError = calListData.error.message;
+      }
+      S.calLoading=false; render(); return;
+    }
+    S.calError = null;
     const calendars = (calListData.items||[]).filter(c => c.selected !== false && c.accessRole !== 'freeBusyReader');
     console.log('[Denise] Calendars:', calendars.map(c=>c.summary).join(', '));
 
@@ -1069,6 +1079,7 @@ function renderDashTab(overdue,unread){
             ${ev.hangoutLink?`<a href="${esc(ev.hangoutLink)}" target="_blank" style="font-size:11px;font-family:var(--fd);color:var(--accent);text-decoration:none;flex-shrink:0">Join ↗</a>`:''}
             ${ev.endStr?`<div style="font-family:var(--fd);font-size:11px;color:var(--muted);flex-shrink:0">${esc(ev.endStr)}</div>`:''}
           </div>`).join(''):
+        S.calError?`<div style="padding:14px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:6px">${esc(S.calError)}</div><a href="https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=597561744602" target="_blank" style="font-size:12px;color:var(--accent)">Open Google Cloud Console ↗</a></div>`:
         `<div style="padding:14px 18px;font-size:13px;color:var(--muted)">${window._gTok?'Nothing in the diary — clear day!':'Load Gmail to connect your calendar.'}</div>`}
     </div>
   </div>
