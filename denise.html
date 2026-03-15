@@ -414,39 +414,60 @@ async function fetchEmails(){
       }catch(e){ console.error('[Denise] Label lookup failed:', e); }
     }
 
-    // Fetch message list — filtered to Moov label if found, otherwise all inbox
+    // Fetch THREADS (not individual messages) — groups conversations together
     const labelParam = window._moovLabelId ? `&labelIds=${window._moovLabelId}` : '&labelIds=INBOX';
-    const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20${labelParam}`, {
+    const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=20${labelParam}`, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     const listData = await listRes.json();
-    console.log('[Denise] Gmail fetch:', listData.messages?.length||0, 'messages', listData.error?'ERROR: '+listData.error.message:'OK');
+    console.log('[Denise] Gmail threads:', listData.threads?.length||0, listData.error?'ERROR: '+listData.error.message:'OK');
     if(listData.error) throw new Error(listData.error.message);
 
-    // Fetch each message metadata in parallel
-    const msgs = listData.messages || [];
-    const details = await Promise.all(msgs.map(m =>
-      fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + m.id + '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date', {
-        headers: { Authorization: 'Bearer ' + token }
+    // Fetch each thread with metadata
+    const threads = listData.threads || [];
+    const threadDetails = await Promise.all(threads.map(t =>
+      fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${t.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, {
+        headers: { 'Authorization': 'Bearer ' + token }
       }).then(r => r.json())
     ));
 
-    S.emails = details.map(m => {
-      const hdrs = m.payload?.headers || [];
-      const get = n => (hdrs.find(h => h.name.toLowerCase() === n.toLowerCase()) || {}).value || '';
-      const from = get('From');
-      const fm = from.match(/^(.*?)\s*<(.+?)>$/) || [null, from, from];
-      const dt = new Date(get('Date'));
-      return {
-        id: m.id, threadId: m.threadId,
-        subject: get('Subject') || '(no subject)',
-        from_name: (fm[1] || '').replace(/"/g, '').trim() || fm[2],
-        from_email: fm[2] || from,
-        date: isNaN(dt) ? '' : dt.toLocaleDateString('en-GB', {day:'numeric', month:'short'}),
-        snippet: (m.snippet || '').slice(0, 120),
-        is_unread: (m.labelIds || []).includes('UNREAD'),
-      };
-    });
+    S.emails = threadDetails
+      .filter(t => {
+        // Skip threads where all messages are trashed/spam
+        const allLabels = (t.messages || []).flatMap(m => m.labelIds || []);
+        if(allLabels.includes('TRASH') || allLabels.includes('SPAM')) return false;
+        return true;
+      })
+      .map(t => {
+        const msgs = t.messages || [];
+        // Use the latest message in the thread for display
+        const latest = msgs[msgs.length - 1];
+        const hdrs = latest?.payload?.headers || [];
+        const get = n => (hdrs.find(h => h.name.toLowerCase() === n.toLowerCase()) || {}).value || '';
+        const from = get('From');
+        const fm = from.match(/^(.*?)\s*<(.+?)>$/) || [null, from, from];
+        const dt = new Date(get('Date'));
+        // Collect all unique senders in the thread
+        const senders = [...new Set(msgs.map(m => {
+          const mFrom = (m.payload?.headers||[]).find(h=>h.name.toLowerCase()==='from')?.value||'';
+          const match = mFrom.match(/^(.*?)\s*<(.+?)>$/);
+          return match ? (match[1]||'').replace(/"/g,'').trim() || match[2] : mFrom;
+        }).filter(Boolean))];
+        const hasUnread = msgs.some(m => (m.labelIds||[]).includes('UNREAD'));
+        // Subject from first message (thread subject)
+        const firstHdrs = msgs[0]?.payload?.headers || [];
+        const subject = (firstHdrs.find(h=>h.name.toLowerCase()==='subject')?.value) || get('Subject') || '(no subject)';
+        return {
+          id: latest.id, threadId: t.id,
+          subject: subject.replace(/^(Re|Fwd):\s*/gi, ''),
+          from_name: senders.length > 2 ? senders.slice(0,2).join(', ') + ' +' + (senders.length-2) : senders.join(', '),
+          from_email: fm[2] || from,
+          date: isNaN(dt) ? '' : dt.toISOString(),
+          snippet: (latest.snippet || '').slice(0, 120),
+          is_unread: hasUnread,
+          msgCount: msgs.length,
+        };
+      });
   } catch(e) {
     console.error('Gmail:', e);
     // Clear cached token so next attempt triggers fresh login
@@ -947,7 +968,7 @@ function renderGmailTab(){
         ${needsAction?`<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--danger);border-radius:2px 0 0 2px"></div>`:''}
         <div class="edot ${e.is_unread?'':'read'}"></div>
         <div class="einfo">
-          <div class="esender">${esc(e.from_name||e.from_email)}</div>
+          <div class="esender">${esc(e.from_name||e.from_email)}${e.msgCount>1?` <span style="font-size:11px;font-weight:400;color:var(--muted)">(${e.msgCount})</span>`:''}</div>
           <div class="esubj">${esc(e.subject)}</div>
         </div>
         <div class="etime">${esc(fmtEmailDate(e.date))}</div>
