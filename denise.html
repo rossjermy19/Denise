@@ -575,51 +575,64 @@ function stopListening(){
   if(_recognition){ _recognition.stop(); }
 }
 
+// Ensure browser voices are loaded early (they load async on some browsers)
+if(window.speechSynthesis){speechSynthesis.getVoices();speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();}
+
 async function speak(text){
   S.voiceSpeaking = true; render();
 
-  // Try ElevenLabs first for well-spoken English female voice
+  // Try ElevenLabs first — well-spoken English female
   const elevenKey = localStorage.getItem('pa_elevenlabs_key');
   if(elevenKey){
     try{
-      // "Rachel" — polished, well-spoken British English female
-      const voiceId = localStorage.getItem('pa_elevenlabs_voice') || '21m00Tcm4TlvDq8ikWAM'; // "Rachel"
+      // "Rachel" — polished, well-spoken English female (pre-made, available on all plans)
+      const voiceId = localStorage.getItem('pa_elevenlabs_voice') || '21m00Tcm4TlvDq8ikWAM';
+      console.log('[Denise] Calling ElevenLabs, voice:', voiceId);
       const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'xi-api-key': elevenKey },
         body: JSON.stringify({
           text: text,
-          model_id: 'eleven_multilingual_v2',
-          voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.4, use_speaker_boost: true }
+          model_id: 'eleven_turbo_v2_5',
+          voice_settings: { stability: 0.6, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true }
         })
       });
       if(res.ok){
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.onended = () => { S.voiceSpeaking=false; render(); URL.revokeObjectURL(url); };
-        audio.onerror = () => { S.voiceSpeaking=false; render(); URL.revokeObjectURL(url); };
-        audio.play();
-        return;
+        if(blob.size < 1000){ console.warn('[Denise] ElevenLabs returned tiny response, falling back'); }
+        else {
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.onended = () => { S.voiceSpeaking=false; render(); URL.revokeObjectURL(url); };
+          audio.onerror = () => { S.voiceSpeaking=false; render(); URL.revokeObjectURL(url); };
+          audio.play();
+          return;
+        }
+      } else {
+        const errBody = await res.text().catch(()=>'');
+        console.warn('[Denise] ElevenLabs failed:', res.status, errBody);
       }
-      console.warn('[Denise] ElevenLabs failed, falling back to browser voice:', res.status);
     }catch(e){ console.warn('[Denise] ElevenLabs error, falling back:', e); }
+  } else {
+    console.log('[Denise] No ElevenLabs key set — using browser voice');
   }
 
-  // Fallback: browser SpeechSynthesis — prefer well-spoken British English female
+  // Fallback: browser SpeechSynthesis — pick the best available voice
   if(!window.speechSynthesis){ S.voiceSpeaking=false; render(); return; }
   window.speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = 'en-GB';
-  utter.rate = 1.0;
+  utter.rate = 0.95;
   utter.pitch = 1.05;
   const voices = speechSynthesis.getVoices();
-  // Priority: British female (Kate/Serena/Martha) > British any > US female (Samantha) > any English female
-  const voice = voices.find(v => /en.GB/i.test(v.lang) && /female|kate|serena|martha/i.test(v.name))
-    || voices.find(v => /en.GB/i.test(v.lang))
-    || voices.find(v => /en/i.test(v.lang) && /female|samantha/i.test(v.name))
-    || voices.find(v => /en/i.test(v.lang) && /female/i.test(v.name));
-  if(voice) utter.voice = voice;
+  console.log('[Denise] Available voices:', voices.map(v=>v.name+' ('+v.lang+')').join(', '));
+  // Priority: premium Google/Apple voices > British female > US female > any English female
+  const voice = voices.find(v => /en.GB/i.test(v.lang) && /google.*female|kate|serena|martha|stephanie/i.test(v.name))
+    || voices.find(v => /en.GB/i.test(v.lang) && !/male/i.test(v.name))
+    || voices.find(v => /en.US/i.test(v.lang) && /samantha|google.*female|zira/i.test(v.name))
+    || voices.find(v => /en/i.test(v.lang) && /female|samantha|kate|zira|victoria/i.test(v.name))
+    || voices.find(v => /en/i.test(v.lang));
+  if(voice){ utter.voice = voice; console.log('[Denise] Using voice:', voice.name); }
   utter.onend = () => { S.voiceSpeaking = false; render(); };
   utter.onerror = () => { S.voiceSpeaking = false; render(); };
   speechSynthesis.speak(utter);
