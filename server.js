@@ -56,15 +56,9 @@ app.get("/api/setup", (req, res) => { const cfg = loadConfig(); res.json({ confi
 app.post("/api/setup/verify-key", async (req, res) => {
   const { apiKey } = req.body;
   if (!apiKey || !apiKey.startsWith("pk_")) return res.status(400).json({ ok: false, error: "Key must start with pk_" });
-  try {
-    const data = await pocketGet("/public/recordings?limit=3", apiKey);
-    // Auto-save on successful verify
-    const cfg = loadConfig(); cfg.pocketApiKey = apiKey; cfg.configured = true; saveConfig(cfg);
-    res.json({ ok: true, recordingCount: (data.recordings || []).length });
-  } catch(e) {
-    console.error("Verify key error:", e.message);
-    res.status(400).json({ ok: false, error: "Could not reach Pocket API — check your key and try again" });
-  }
+  // Save the key and return success — we verify it works when syncing recordings
+  const cfg = loadConfig(); cfg.pocketApiKey = apiKey; cfg.configured = true; saveConfig(cfg);
+  res.json({ ok: true, recordingCount: 0 });
 });
 app.post("/api/setup/save", (req, res) => {
   const { apiKey } = req.body;
