@@ -516,20 +516,52 @@ function stopListening(){
   if(_recognition){ _recognition.stop(); }
 }
 
-function speak(text){
-  if(!window.speechSynthesis) return;
+async function speak(text){
+  S.voiceSpeaking = true; render();
+
+  // Try ElevenLabs first for natural Irish voice
+  const elevenKey = localStorage.getItem('pa_elevenlabs_key');
+  if(elevenKey){
+    try{
+      // Use a warm female voice — the voice ID can be changed in settings
+      const voiceId = localStorage.getItem('pa_elevenlabs_voice') || 'pFZP5JQG7iQjIQuC4Bku'; // "Lily" — warm, velvety female
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'xi-api-key': elevenKey },
+        body: JSON.stringify({
+          text: `<irish_accent>${text}</irish_accent>`,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability: 0.45, similarity_boost: 0.7, style: 0.5, use_speaker_boost: true }
+        })
+      });
+      if(res.ok){
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => { S.voiceSpeaking=false; render(); URL.revokeObjectURL(url); };
+        audio.onerror = () => { S.voiceSpeaking=false; render(); URL.revokeObjectURL(url); };
+        audio.play();
+        return;
+      }
+      console.warn('[Denise] ElevenLabs failed, falling back to browser voice:', res.status);
+    }catch(e){ console.warn('[Denise] ElevenLabs error, falling back:', e); }
+  }
+
+  // Fallback: browser SpeechSynthesis — prefer Irish English female voice
+  if(!window.speechSynthesis){ S.voiceSpeaking=false; render(); return; }
   window.speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = 'en-GB';
-  utter.rate = 1.05;
-  utter.pitch = 1.0;
-  // Prefer a British female voice
+  utter.lang = 'en-IE'; // Irish English
+  utter.rate = 1.0;
+  utter.pitch = 1.05;
   const voices = speechSynthesis.getVoices();
-  const brit = voices.find(v => /en.GB/i.test(v.lang) && /female/i.test(v.name))
-    || voices.find(v => /en.GB/i.test(v.lang))
+  // Priority: Irish female > Irish any > British female > any English female
+  const voice = voices.find(v => /en.IE/i.test(v.lang) && /female|moira/i.test(v.name))
+    || voices.find(v => /en.IE/i.test(v.lang))
+    || voices.find(v => /moira/i.test(v.name)) // macOS Irish voice
+    || voices.find(v => /en.GB/i.test(v.lang) && /female/i.test(v.name))
     || voices.find(v => /en/i.test(v.lang) && /female/i.test(v.name));
-  if(brit) utter.voice = brit;
-  S.voiceSpeaking = true; render();
+  if(voice) utter.voice = voice;
   utter.onend = () => { S.voiceSpeaking = false; render(); };
   utter.onerror = () => { S.voiceSpeaking = false; render(); };
   speechSynthesis.speak(utter);
@@ -1273,6 +1305,7 @@ function renderDash(){
       <button class="hbtn" id="btnForceSync" ${S.syncing?'disabled':''}>↻ Refresh all</button>
       <button class="hbtn" id="btnSync" ${S.syncing?'disabled':''}>${S.syncing?'Syncing...':'↓ Sync Pocket'}</button>
       <div class="live"><div class="ldot"></div>Live</div>
+      <button class="rbtn" id="btnVoiceSettings" title="Voice settings">${localStorage.getItem('pa_elevenlabs_key')?'🎙':'🔇'}</button>
       <button class="rbtn" id="btnReset">Reset</button>
     </div>
   </div>
@@ -1610,6 +1643,14 @@ function bindEvents(){
   const bsy=document.getElementById('btnSync');if(bsy)bsy.addEventListener('click',syncPocket);
   const bfs=document.getElementById('btnForceSync');if(bfs)bfs.addEventListener('click',forceSyncPocket);
   const brs=document.getElementById('btnReset');if(brs)brs.addEventListener('click',()=>{if(confirm('Reset Denise?')){localStorage.removeItem('pa_setup_done');localStorage.removeItem('pa_api_base');S.wizStep=1;S.apiKey='';S.keyResult=null;S.tasks=[];S.calls=[];S.emails=[];S.cuTasks=[];render();}});
+  const bvs=document.getElementById('btnVoiceSettings');if(bvs)bvs.addEventListener('click',()=>{
+    const current=localStorage.getItem('pa_elevenlabs_key')||'';
+    const key=prompt('ElevenLabs API key for natural voice (leave blank for browser voice):',current);
+    if(key===null) return; // cancelled
+    if(key.trim()){localStorage.setItem('pa_elevenlabs_key',key.trim());alert('ElevenLabs voice enabled! Denise will now speak with a natural voice.');}
+    else{localStorage.removeItem('pa_elevenlabs_key');localStorage.removeItem('pa_elevenlabs_voice');alert('Switched to browser voice.');}
+    render();
+  });
   // Pocket tasks
   document.querySelectorAll('[data-toggle]').forEach(r=>r.addEventListener('click',()=>toggleTask(r.dataset.toggle)));
   const nt=document.getElementById('newTask');if(nt){nt.addEventListener('input',e=>S.newTask=e.target.value);nt.addEventListener('keydown',e=>{if(e.key==='Enter')addTask(nt.value);});}
