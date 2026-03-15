@@ -351,49 +351,71 @@ async function callClaudeMCP(system,msg,mcpServers){
   return (d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
 }
 
+// Get a valid Google token — uses cache if available, prompts OAuth if not
+async function getGoogleToken(){
+  // 1. Try in-memory cache
+  if(window._gTok && window._gExp > Date.now()){
+    // Validate it's still good
+    const testRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+      headers: { 'Authorization': 'Bearer ' + window._gTok }
+    });
+    const testData = await testRes.json();
+    if(!testData.error){
+      console.log('[Denise] Using cached token for:', testData.emailAddress);
+      return window._gTok;
+    }
+    console.warn('[Denise] Cached token expired, clearing');
+  }
+  // 2. Try localStorage
+  const savedTok = localStorage.getItem('pa_gmail_token');
+  const savedExp = parseInt(localStorage.getItem('pa_gmail_token_exp') || '0');
+  if(savedTok && savedExp > Date.now()){
+    const testRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+      headers: { 'Authorization': 'Bearer ' + savedTok }
+    });
+    const testData = await testRes.json();
+    if(!testData.error){
+      window._gTok = savedTok;
+      window._gExp = savedExp;
+      console.log('[Denise] Restored token from cache for:', testData.emailAddress);
+      return savedTok;
+    }
+    console.warn('[Denise] Saved token invalid, clearing');
+    localStorage.removeItem('pa_gmail_token');
+    localStorage.removeItem('pa_gmail_token_exp');
+  }
+  // 3. Fresh OAuth
+  if(!window.google || !window.google.accounts) throw new Error('Google sign-in still loading — please wait a moment and try again');
+  const token = await new Promise((resolve, reject) => {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: '597561744602-3pmav3dbg17itvh5d7kgr1ddil9ii548.apps.googleusercontent.com',
+      scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.readonly',
+      callback: (resp) => {
+        console.log('[Denise] OAuth callback:', resp.error || 'OK', 'token?', !!resp.access_token);
+        if(resp.error){ reject(new Error('Google sign-in error: ' + resp.error)); return; }
+        if(!resp.access_token){ reject(new Error('Google returned no access token')); return; }
+        resolve(resp.access_token);
+      },
+      error_callback: (err) => {
+        console.error('[Denise] OAuth error_callback:', err);
+        reject(new Error('Google sign-in failed: ' + (err.type || '') + ' ' + (err.message||'')));
+      }
+    });
+    client.requestAccessToken();
+  });
+  // Cache it
+  window._gTok = token;
+  window._gExp = Date.now() + 3500000;
+  localStorage.setItem('pa_gmail_token', token);
+  localStorage.setItem('pa_gmail_token_exp', String(window._gExp));
+  console.log('[Denise] Fresh token obtained:', token.slice(0,10)+'...');
+  return token;
+}
+
 async function fetchEmails(){
   S.emailsLoading=true;S.emailsError=null;render();
   try{
-    // Always force fresh OAuth — never use cached tokens (avoids stale/revoked token issues)
-    window._gTok = null; window._gExp = 0;
-    localStorage.removeItem('pa_gmail_token');
-    localStorage.removeItem('pa_gmail_token_exp');
-
-    if(!window.google || !window.google.accounts) throw new Error('Google sign-in still loading — please wait a moment and try again');
-
-    const token = await new Promise((resolve, reject) => {
-      const client = google.accounts.oauth2.initTokenClient({
-        client_id: '597561744602-3pmav3dbg17itvh5d7kgr1ddil9ii548.apps.googleusercontent.com',
-        scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.readonly',
-        callback: (resp) => {
-          console.log('[Denise] OAuth callback:', resp.error || 'OK', 'token?', !!resp.access_token);
-          if(resp.error){ reject(new Error('Google sign-in error: ' + resp.error)); return; }
-          if(!resp.access_token){ reject(new Error('Google returned no access token')); return; }
-          resolve(resp.access_token);
-        },
-        error_callback: (err) => {
-          console.error('[Denise] OAuth error_callback:', err);
-          reject(new Error('Google sign-in failed: ' + (err.type || '') + ' ' + (err.message||'')));
-        }
-      });
-      client.requestAccessToken();
-    });
-
-    // Cache the fresh token
-    window._gTok = token;
-    window._gExp = Date.now() + 3500000;
-    console.log('[Denise] Fresh Gmail token obtained:', token.slice(0,10)+'...');
-
-    // Quick validation: test the token with a simple API call
-    const testRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
-    const testData = await testRes.json();
-    if(testData.error){
-      console.error('[Denise] Token validation failed:', testData.error);
-      throw new Error('Gmail token rejected: ' + testData.error.message);
-    }
-    console.log('[Denise] Token valid for:', testData.emailAddress);
+    const token = await getGoogleToken();
 
     // Always look up the Moov label fresh (no caching — avoids stale sub-label matches)
     try{
@@ -529,7 +551,7 @@ async function fetchEmailBody(emailId){
 async function fetchCalendar(){
   S.calLoading=true; render();
   try{
-    const token = window._gTok;
+    const token = await getGoogleToken();
     if(!token){ console.warn('[Denise] No token for calendar'); S.calLoading=false; render(); return; }
     const now = new Date();
     const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + S.calDayOffset);
@@ -1348,6 +1370,13 @@ if(isSetup()){
   }
   fetchData();startPolling();
   fetchWeather(); // No auth needed — loads on every page visit
+  // Auto-load Gmail + Calendar if we have a cached token (no popup needed)
+  const savedTok = localStorage.getItem('pa_gmail_token');
+  const savedExp = parseInt(localStorage.getItem('pa_gmail_token_exp') || '0');
+  if(savedTok && savedExp > Date.now()){
+    console.log('[Denise] Found cached token, auto-loading Gmail + Calendar');
+    fetchEmails(); // getGoogleToken() inside will validate & use the cached token
+  }
 }
 </script>
 </body>
