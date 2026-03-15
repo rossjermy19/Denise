@@ -251,6 +251,45 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .cbtn{padding:4px 11px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:11px;font-family:var(--fd);cursor:pointer;transition:all .15s;flex-shrink:0}
 .cbtn:hover{background:var(--accent);color:white;border-color:var(--accent)}
 .bdg.bs{background:var(--success-dim);color:var(--success);font-family:var(--fd);font-size:11px;padding:3px 9px;border-radius:20px}
+
+.wiz{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:36px;max-width:480px;width:100%;box-shadow:var(--shadow-md)}
+#setup{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:40px 20px;background:var(--bg)}
+.wbrand{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.wbico{width:40px;height:40px;border-radius:10px;background:var(--purple-dim);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.wtitle{font-family:var(--fb);font-size:20px;font-weight:700;color:var(--text)}
+.wsub2{font-size:12px;color:var(--muted);margin-top:2px}
+.wprogress{display:flex;gap:6px;margin-bottom:24px}
+.wpip{height:3px;flex:1;border-radius:2px;background:var(--border);transition:background .3s}
+.wpip.on{background:var(--accent)}
+.wcard{border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;background:var(--surface);transition:all .2s}
+.wcard.active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.wcard.dim{opacity:.5;pointer-events:none}
+.srow{display:flex;align-items:center;gap:12px}
+.snum{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-size:11px;font-weight:500;color:var(--muted);flex-shrink:0}
+.snum.active{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.snum.done{border-color:var(--success);color:white;background:var(--success);font-size:12px}
+.stitle{font-size:14px;font-weight:600;color:var(--text)}
+.shint{font-size:12px;color:var(--muted);margin-top:1px}
+.winp{width:100%;padding:9px 12px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-family:var(--body);outline:none;margin-top:12px;transition:border-color .15s}
+.winp:focus{border-color:var(--accent)}
+.werr{font-size:12px;color:var(--danger);margin-top:6px;font-family:var(--fd)}
+.wok{font-size:12px;color:var(--success);margin-top:8px;font-family:var(--fd)}
+.winfo{font-size:12px;color:var(--muted);margin-top:6px;font-family:var(--fd)}
+.wnote{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6}
+.brow{display:flex;gap:8px;margin-top:12px}
+.wbtn{padding:9px 20px;border-radius:50px;border:none;font-size:13px;font-family:var(--fb);font-weight:600;cursor:pointer;transition:all .15s}
+.wbtn.pri{background:var(--accent);color:white}
+.wbtn.pri:hover{opacity:.9}
+.wbtn.pri:disabled{opacity:.5;cursor:not-allowed}
+.wbtn.sec{background:transparent;color:var(--text2);border:1px solid var(--border)}
+.wbtn.sec:hover{border-color:var(--accent);color:var(--accent)}
+.crow{margin-top:12px}
+.clbl{font-family:var(--fd);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.cbox{display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:9px 12px;gap:10px}
+.cval{flex:1;font-family:var(--fd);font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cbtn{padding:4px 11px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:11px;font-family:var(--fd);cursor:pointer;transition:all .15s;flex-shrink:0}
+.cbtn:hover{background:var(--accent);color:white;border-color:var(--accent)}
+.bdg.bs{background:var(--success-dim);color:var(--success);font-family:var(--fd);font-size:11px;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center}
 </style>
 </head>
 <body>
@@ -474,7 +513,7 @@ async function wizCheckBackend(){
 async function wizVerifyKey(){
   const key=document.getElementById('apiKey')?.value||S.apiKey;S.apiKey=key;
   S.verifyingKey=true;S.keyResult=null;render();const _vkTimeout=setTimeout(()=>{if(S.verifyingKey){S.verifyingKey=false;S.keyResult={ok:false,error:'Timed out — check your API key and try again'};render();}},15000);
-  try{const res=await fetch(`${API()}/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});const data=await res.json();S.keyResult=data;clearTimeout(_vkTimeout);if(data.ok){await fetch(`${API()}/api/setup/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});S.wizStep=3;}}
+  try{const res=await fetch(`${API()}/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});const data=await res.json();S.keyResult=data;clearTimeout(_vkTimeout);if(data.ok){localStorage.setItem('pa_pocket_key',key);await fetch(`${API()}/api/setup/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});S.wizStep=3;}}
   catch{S.keyResult={ok:false,error:'Could not reach backend'};}
   clearTimeout(_vkTimeout);S.verifyingKey=false;render();
 }
@@ -497,24 +536,58 @@ function copyText(text,btnId){
 function renderSetup(){
   const whu=S.backendUrl?`${S.backendUrl.replace(/\/$/,'')}/webhook/pocket`:'';
   return `<div id="setup"><div class="wiz">
-  <div class="wbrand"><div class="wbico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div><div><div class="wtitle">Meet Denise</div></div></div>
-  <div class="wsub">Your unified PA — Pocket &amp; Gmail in one place</div>
+  <div class="wbrand">
+    <div class="wbico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
+    <div><div class="wtitle">Meet Denise</div><div class="wsub2">Your PA — Pocket &amp; Gmail in one place</div></div>
+  </div>
+  <div class="wprogress">
+    <div class="wpip ${S.wizStep>=1?'on':''}"></div>
+    <div class="wpip ${S.wizStep>=2?'on':''}"></div>
+    <div class="wpip ${S.wizStep>=3?'on':''}"></div>
+  </div>
+
   <div class="wcard ${S.wizStep===1?'active':''} ${S.wizStep<1?'dim':''}">
-    <div class="srow ${S.wizStep===1?'hc':''}"><div class="snum ${S.wizStep>1?'done':S.wizStep===1?'active':''}">${S.wizStep>1?'✓':'1'}</div><div style="flex:1"><div class="stitle">Enter your Railway backend URL</div><div class="shint">The URL Railway gave you after deploying</div></div>${S.wizStep>1?'<span class="bdg bs">Connected</span>':''}</div>
-    ${S.wizStep===1?`<input class="winp" id="backendUrl" type="text" value="${esc(S.backendUrl)}" placeholder="https://your-app.up.railway.app" />${S.backendErr?`<div class="werr">${esc(S.backendErr)}</div>`:''}<div class="brow"><button class="wbtn pri" id="btnCheckBackend">${S.checkingBackend?'Connecting...':'Connect →'}</button></div>`:''}
+    <div class="srow"><div class="snum ${S.wizStep>1?'done':S.wizStep===1?'active':''}">${S.wizStep>1?'✓':'1'}</div>
+    <div style="flex:1"><div class="stitle">Railway backend URL</div><div class="shint">The URL Railway gave you after deploying</div></div>
+    ${S.wizStep>1?'<span class="bdg bs">Connected</span>':''}</div>
+    ${S.wizStep===1?`
+      <input class="winp" id="backendUrl" type="text" value="${esc(S.backendUrl)}" placeholder="https://your-app.up.railway.app" />
+      ${S.backendErr?`<div class="werr">${esc(S.backendErr)}</div>`:''}
+      <div class="brow"><button class="wbtn pri" id="btnCheckBackend">${S.checkingBackend?'Connecting...':'Connect →'}</button></div>
+    `:''}
   </div>
+
   <div class="wcard ${S.wizStep===2?'active':''} ${S.wizStep<2?'dim':''}">
-    <div class="srow ${S.wizStep===2?'hc':''}"><div class="snum ${S.wizStep>2?'done':S.wizStep===2?'active':''}">${S.wizStep>2?'✓':'2'}</div><div style="flex:1"><div class="stitle">Paste your Pocket API key</div><div class="shint">Pocket app → Developer settings</div></div>${S.wizStep>2&&S.keyResult?.ok?`<span class="bdg bs">${S.keyResult.recordingCount} recordings</span>`:''}</div>
-    ${S.wizStep===2?`<input class="winp" id="apiKey" type="text" value="${esc(S.apiKey)}" placeholder="pk_xxxxxxxxxxxxxxxx" />${S.keyResult&&!S.keyResult.ok?`<div class="werr">${esc(S.keyResult.error)}</div>`:''}<div class="brow"><button class="wbtn pri" id="btnVerifyKey">${S.verifyingKey?'Verifying...':'Verify key →'}</button></div>`:''}
+    <div class="srow"><div class="snum ${S.wizStep>2?'done':S.wizStep===2?'active':''}">${S.wizStep>2?'✓':'2'}</div>
+    <div style="flex:1"><div class="stitle">Pocket API key</div><div class="shint">Pocket app → Developer settings</div></div>
+    ${S.wizStep>2?'<span class="bdg bs">Verified</span>':''}</div>
+    ${S.wizStep===2?`
+      <input class="winp" id="apiKey" type="text" value="${esc(S.apiKey)}" placeholder="pk_xxxxxxxx..." />
+      ${S.keyResult&&!S.keyResult.ok?`<div class="werr">${esc(S.keyResult.error)}</div>`:''}
+      ${S.verifyingKey?'<div class="winfo">Verifying...</div>':''}
+      <div class="brow">
+        <button class="wbtn pri" id="btnVerifyKey" ${S.verifyingKey?'disabled':''}>Verify key →</button>
+      </div>
+    `:''}
   </div>
+
   <div class="wcard ${S.wizStep===3?'active':''} ${S.wizStep<3?'dim':''}">
-    <div class="srow ${S.wizStep===3?'hc':''}"><div class="snum ${S.wizStep===3?'active':''}">3</div><div style="flex:1"><div class="stitle">Connect Pocket webhook</div><div class="shint">Pocket app → Developer settings → Webhook URL</div></div></div>
-    ${S.wizStep===3?`<div class="crow"><div class="clbl">Webhook URL</div><div class="cbox"><span class="cval">${esc(whu)}</span><button class="cbtn" id="copyUrl" onclick="copyText('${esc(whu)}','copyUrl')">Copy</button></div></div><div class="wnote">If Pocket already saved the webhook URL, just click Go to dashboard.</div>${S.webhookResult&&!S.webhookResult.ok?`<div class="werr">${esc(S.webhookResult.message)}</div>`:''}${S.webhookResult?.ok?`<div class="wok">✓ Webhook working!</div>`:''}<div class="brow"><button class="wbtn pri" id="btnSkip">Go to dashboard →</button><button class="wbtn sec" id="btnCheckWebhook">${S.checkingWebhook?'Checking...':'Verify recording'}</button></div>`:''}
+    <div class="srow"><div class="snum ${S.wizStep===3?'active':''}">3</div>
+    <div style="flex:1"><div class="stitle">Connect Pocket webhook</div><div class="shint">Pocket app → Developer settings → Webhook URL</div></div></div>
+    ${S.wizStep===3?`
+      <div class="crow">
+        <div class="clbl">Paste this URL into Pocket</div>
+        <div class="cbox"><span class="cval">${esc(whu)}</span><button class="cbtn" id="copyUrl">Copy</button></div>
+      </div>
+      <div class="wnote">Already set up? Click Go to dashboard.</div>
+      ${S.webhookResult?.ok?'<div class="wok">✓ Webhook working!</div>':''}
+      <div class="brow">
+        <button class="wbtn pri" id="btnSkip">Go to dashboard →</button>
+        <button class="wbtn sec" id="btnVerifyWebhook">Check webhook</button>
+      </div>
+    `:''}
   </div>
-  <div class="stcard"><div class="sttitle">Status</div>
-    ${[['Backend reachable',S.wizStep>1],['Pocket API key verified',S.wizStep>2],['Webhook configured',!!S.webhookResult?.ok]].map(([l,ok])=>`<div class="strow"><div class="stdot ${ok?'ok':''}"></div><span style="color:${ok?'var(--text)':'var(--muted)'}">${l}</span></div>`).join('')}
-  </div>
-  </div></div>`;
+</div></div>`;
 }
 
 function renderDash(){
@@ -759,7 +832,14 @@ let pollInterval=null;
 function startPolling(){if(pollInterval)clearInterval(pollInterval);pollInterval=setInterval(fetchData,30000);}
 
 render();
-if(isSetup()){fetchData();fetchClickUp();startPolling();}
+if(isSetup()){
+  // Auto-restore Pocket API key to backend after redeploy
+  const savedKey=localStorage.getItem('pa_pocket_key');
+  if(savedKey){
+    fetch(`${API()}/api/setup/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:savedKey})}).catch(()=>{});
+  }
+  fetchData();startPolling();
+}
 </script>
 </body>
 </html>
@@ -1240,7 +1320,14 @@ let pollInterval=null;
 function startPolling(){if(pollInterval)clearInterval(pollInterval);pollInterval=setInterval(fetchData,30000);}
 
 render();
-if(isSetup()){fetchData();fetchClickUp();startPolling();}
+if(isSetup()){
+  // Auto-restore Pocket API key to backend after redeploy
+  const savedKey=localStorage.getItem('pa_pocket_key');
+  if(savedKey){
+    fetch(`${API()}/api/setup/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:savedKey})}).catch(()=>{});
+  }
+  fetchData();startPolling();
+}
 </script>
 </body>
 </html>
