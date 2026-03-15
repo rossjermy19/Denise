@@ -56,6 +56,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 
 /* ── Body / content ── */
 .body{padding:24px;max-width:880px;margin:0 auto;width:100%}
+.body.full{max-width:100%;padding:14px 18px}
 
 /* ── Stats ── */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
@@ -361,7 +362,7 @@ async function fetchEmails(){
     const token = await new Promise((resolve, reject) => {
       const client = google.accounts.oauth2.initTokenClient({
         client_id: '597561744602-3pmav3dbg17itvh5d7kgr1ddil9ii548.apps.googleusercontent.com',
-        scope: 'https://www.googleapis.com/auth/gmail.readonly',
+        scope: 'https://www.googleapis.com/auth/gmail.modify',
         callback: (resp) => {
           console.log('[Denise] OAuth callback:', resp.error || 'OK', 'token?', !!resp.access_token);
           if(resp.error){ reject(new Error('Google sign-in error: ' + resp.error)); return; }
@@ -611,6 +612,29 @@ RULES:
   render();
 }
 
+async function trashEmail(email){
+  if(!email) return;
+  const token = window._gTok;
+  if(!token){ alert('Gmail not connected — load Gmail first'); return; }
+  if(!confirm('Move this thread to trash?')) return;
+  try{
+    // Trash the entire thread
+    await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${email.threadId}/trash`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    // Remove from local list and close detail
+    S.emails = S.emails.filter(e => e.threadId !== email.threadId);
+    S.selectedEmail = null;
+    S.selectedEmailIdx = null;
+    S.composingReply = null;
+    render();
+  }catch(e){
+    console.error('[Denise] Trash email failed:', e);
+    alert('Failed to delete: ' + e.message);
+  }
+}
+
 async function sendReply(email){
   const replyArea = document.getElementById('replyArea');
   const body = replyArea?.value || S.replyDraft;
@@ -850,7 +874,7 @@ function renderDash(){
       <button class="rbtn" id="btnReset">Reset</button>
     </div>
   </div>
-  <div class="body">
+  <div class="body${S.tab!=='dashboard'?' full':''}">
     ${S.tab==='dashboard'?renderDashTab(overdue,unread):S.tab==='gmail'?renderGmailTab():S.tab==='clickup'?renderClickUpTab():S.tab==='pocket'?renderPocketTab(overdue):renderPATab()}
   </div></div>`;
 }
@@ -891,7 +915,7 @@ function renderDashTab(overdue,unread){
       `:needsReply.length===0?`
         <div style="font-size:13px;color:var(--muted);padding:4px 0">✓ No emails currently need a reply.</div>
         <div style="margin-top:10px">${S.emails.slice(0,5).map((e,i)=>`
-          <div class="erow ${e.is_unread?'unread':''}" data-email="${i}" style="padding:7px 8px">
+          <div class="erow ${e.is_unread?'unread':''}" data-goto-email="${i}" style="padding:7px 8px;cursor:pointer">
             <div class="edot ${e.is_unread?'':'read'}"></div>
             <div class="einfo"><div class="esender">${esc(e.from_name||e.from_email)}</div><div class="esubj">${esc(e.subject)}</div></div>
             <div class="etime">${esc(fmtEmailDate(e.date))}</div>
@@ -904,7 +928,7 @@ function renderDashTab(overdue,unread){
           const pColors={urgent:['var(--danger)','var(--danger-dim)','var(--danger-text)'],high:['var(--warn)','var(--warn-dim)','var(--warn-text)'],medium:['var(--accent)','var(--accent-dim)','var(--accent)']};
           const [stripe,bg,fg]=pColors[p]||pColors.medium;
           const pLabels={urgent:'⚡ Urgent',high:'↩ Reply today',medium:'📋 Action needed'};
-          return`<div class="priority-email" data-email="${origIdx}">
+          return`<div class="priority-email" data-goto-email="${origIdx}" style="cursor:pointer">
             <div class="priority-stripe" style="background:${stripe}"></div>
             <div class="priority-email-body">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
@@ -930,7 +954,7 @@ function renderDashTab(overdue,unread){
     </div>
     ${S.calls.length===0?`<div style="font-size:13px;color:var(--muted)">No recordings yet. Make a recording on your Pocket device.</div>`:`
       ${S.calls.slice(0,5).map(call=>{
-        return`<div class="erow" data-call="${esc(call.id)}">
+        return`<div class="erow" data-goto-call="${esc(call.id)}" style="cursor:pointer">
           <div class="edot" style="background:var(--purple)"></div>
           <div class="einfo">
             <div class="esender">${esc(call.title)}</div>
@@ -950,9 +974,9 @@ function renderGmailTab(){
   const actionable=S.emails.filter(e=>e.needsReply);
   const unreadCount=S.emails.filter(e=>e.is_unread).length;
 
-  return `<div style="display:grid;grid-template-columns:${sel?'320px 1fr':'1fr'};gap:14px;align-items:start">
+  return `<div style="display:grid;grid-template-columns:${sel?'320px 1fr':'1fr'};gap:10px;align-items:start">
   <!-- Email list -->
-  <div class="card" style="max-height:calc(100vh - 120px);overflow-y:auto">
+  <div class="card" style="max-height:calc(100vh - 90px);overflow-y:auto">
     <div class="chdr">
       <span class="ctitle">Inbox</span>
       <div style="display:flex;gap:8px;align-items:center">
@@ -976,7 +1000,7 @@ function renderGmailTab(){
     }).join('')}
   </div>
 
-  ${sel?`<div style="display:flex;flex-direction:column;gap:0;height:calc(100vh - 120px)">
+  ${sel?`<div style="display:flex;flex-direction:column;gap:0;height:calc(100vh - 90px)">
     <!-- Email detail — shrinks when composing -->
     <div class="edetail" style="flex:${composing?'0 1 auto':'1 1 auto'};overflow-y:auto;${composing?'max-height:40%':''}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
@@ -987,7 +1011,10 @@ function renderGmailTab(){
             ${sel.date?`<br><span style="color:var(--muted)">${new Date(sel.date).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span>`:''}
           </div>
         </div>
-        <button class="ebtn" id="btnCloseEmail" style="flex-shrink:0">✕</button>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="ebtn" id="btnTrashEmail" style="color:var(--danger);border-color:var(--danger)" title="Delete">🗑</button>
+          <button class="ebtn" id="btnCloseEmail">✕</button>
+        </div>
       </div>
       ${sel.bodyLoading?`<div class="ldr"><div class="spinner"></div>Loading email...</div>`:`<div class="ebody">${esc(sel.body||sel.snippet||'')}</div>`}
       ${S.sendSuccess===sel.id?`<div style="margin-top:12px;padding:10px 14px;background:var(--success-dim);border-radius:var(--r);color:var(--success);font-size:13px;font-weight:500">✓ Reply sent successfully</div>`:''}
@@ -1114,9 +1141,11 @@ function bindEvents(){
   const bre=document.getElementById('btnRefreshEmail');if(bre)bre.addEventListener('click',fetchEmails);
   document.querySelectorAll('[data-email]').forEach(row=>{row.addEventListener('click',async()=>{const idx=parseInt(row.dataset.email);const email={...S.emails[idx]};S.selectedEmailIdx=idx;S.selectedEmail={...email,bodyLoading:true};S.composingReply=null;render();const full=await fetchEmailBody(email.id);S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});});
   document.querySelectorAll('[data-goto-email]').forEach(b=>{b.addEventListener('click',()=>{const idx=parseInt(b.dataset.gotoEmail);S.tab='gmail';S.selectedEmailIdx=idx;S.selectedEmail={...S.emails[idx],bodyLoading:true};render();fetchEmailBody(S.emails[idx].id).then(full=>{S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});});});
+  document.querySelectorAll('[data-goto-call]').forEach(b=>{b.addEventListener('click',()=>{const c=S.calls.find(x=>x.id===b.dataset.gotoCall);if(c){S.tab='pocket';S.selectedCall=c;render();}});});
   const bdr=document.getElementById('btnDraftReply');if(bdr)bdr.addEventListener('click',()=>draftReply(S.selectedEmail));
   const bmr=document.getElementById('btnManualReply');if(bmr)bmr.addEventListener('click',()=>{S.composingReply=S.selectedEmail;S.replyDraft='';render();setTimeout(()=>{const ta=document.getElementById('replyArea');if(ta)ta.focus();},50);});
   const bsr=document.getElementById('btnSendReply');if(bsr)bsr.addEventListener('click',()=>sendReply(S.selectedEmail));
+  const bte=document.getElementById('btnTrashEmail');if(bte)bte.addEventListener('click',()=>trashEmail(S.selectedEmail));
   const bce=document.getElementById('btnCloseEmail');if(bce)bce.addEventListener('click',()=>{S.selectedEmail=null;S.composingReply=null;render();});
   const bcr=document.getElementById('btnCancelReply');if(bcr)bcr.addEventListener('click',()=>{S.composingReply=null;render();});
   const bcop=document.getElementById('btnCopyReply');if(bcop)bcop.addEventListener('click',()=>{const a=document.getElementById('replyArea');navigator.clipboard.writeText(a?.value||S.replyDraft);bcop.textContent='Copied!';setTimeout(()=>bcop.textContent='Copy to clipboard',2000);});
