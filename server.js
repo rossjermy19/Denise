@@ -280,6 +280,33 @@ app.get("/api/gmail/debug", async (req, res) => {
 });
 
 
+// ── Client-side sync (browser fetches Pocket, sends here to store) ──
+app.post("/api/sync/client", (req, res) => {
+  const { recordings } = req.body;
+  if (!Array.isArray(recordings)) return res.status(400).json({ error: "Invalid data" });
+  const db = loadDB();
+  let added = 0;
+  for (const r of recordings) {
+    if (!r.id) continue;
+    const exists = db.calls.find(c => c.id === r.id);
+    if (!exists) {
+      db.calls.push({
+        id: r.id,
+        title: r.title || "Untitled",
+        createdAt: r.created_at || r.createdAt || new Date().toISOString(),
+        duration: r.duration || 0,
+        summary: r.summary || null,
+        bulletPoints: r.bullet_points || r.bulletPoints || [],
+        transcript: r.transcript || null,
+        actionItems: r.action_items || r.actionItems || [],
+      });
+      added++;
+    }
+  }
+  saveDB(db);
+  res.json({ ok: true, added, total: db.calls.length });
+});
+
 // ── Webhook ───────────────────────────────────────────────────────────
 app.post("/webhook/pocket", (req, res) => {
   let payload; try { payload = JSON.parse(req.body.toString()); } catch { return res.status(400).json({ error: "Invalid JSON" }); }
