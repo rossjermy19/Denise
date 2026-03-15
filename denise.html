@@ -592,42 +592,50 @@ async function fetchWeather(){
 async function generateAlerts(){
   S.alertsLoading=true;S.alertsGenerated=true;render();
   try{
-    const emailCtx=S.emails.slice(0,20).map((e,i)=>`${i+1}. From: ${e.from_name||e.from_email} <${e.from_email}> | Subject: ${e.subject} | Preview: ${e.snippet} | Unread: ${e.is_unread}`).join('\n');
+    // Fetch the latest message body for each thread so Claude can read the actual content
+    const emailsToScan = S.emails.slice(0,15);
+    const bodies = await Promise.all(emailsToScan.map(async (e) => {
+      try{
+        const full = await fetchEmailBody(e.id);
+        return full?.body?.slice(0,500) || e.snippet || '';
+      }catch{ return e.snippet || ''; }
+    }));
+    const emailCtx=emailsToScan.map((e,i)=>`${i+1}. From: ${e.from_name||e.from_email} <${e.from_email}> | Subject: ${e.subject} | Thread messages: ${e.msgCount||1} | Unread: ${e.is_unread}\nLatest message:\n${bodies[i]}`).join('\n---\n');
     const reply=await callClaude(
       `You are Denise, PA for Ross Jermy at Moov Parcel / Nino Logistics (UK shipping logistics).
 
-Your job: scan Ross's inbox and identify ONLY emails that require his personal action. Be aggressive about filtering noise.
+Your job: read the LATEST MESSAGE in each email thread and decide if Ross personally needs to take action. Be VERY strict — most emails should NOT be flagged. When in doubt, don't flag it.
 
-IGNORE completely (never flag these):
-- Newsletters, marketing emails, promotional offers
-- Automated notifications (GitHub, Slack, Jira, Railway, Vercel, CI/CD, server alerts)
-- Order confirmations, shipping notifications, receipts
-- Social media notifications
-- Calendar invites that are informational only
-- CC'd emails where Ross isn't directly addressed
-- Read emails that have already been dealt with
-- Spam or bulk mail
-- No-reply addresses
-- Generic company announcements
+CRITICAL: Read the actual body of the latest message. The subject line alone is NOT enough. You must determine whether the LAST person to write in this thread is waiting on Ross to do something.
 
-ONLY FLAG these as needing action:
-- Direct questions to Ross requiring a response
-- Client or supplier emails asking for a decision or information
-- Requests with deadlines or time pressure
-- Escalations or urgent operational issues
-- Emails from Ross's team needing approval or input
-- Meeting requests that need acceptance/decline
-- Financial matters needing review (invoices needing approval, etc.)
+NEVER flag (regardless of subject line):
+- Newsletters, marketing, promotions, bulk mail
+- Automated notifications (GitHub, Slack, Jira, CI/CD, tracking, server alerts)
+- Order confirmations, receipts, shipping updates
+- Social media notifications, calendar auto-updates
+- CC'd emails where Ross isn't directly asked something
+- Threads where the latest message is FROM Ross (he already replied — conversation ball is in their court)
+- Threads where the latest message is just "thanks", "cheers", "noted", "will do" etc. (conversation is done)
+- FYI/informational emails with no question or request
+- Spam, no-reply addresses, generic company announcements
+- Read emails with no new action required
 
-For each flagged email, assess priority:
-- "urgent": time-sensitive, client-facing, or blocking someone
-- "high": needs a reply today but not immediately
-- "medium": should reply within a few days
+ONLY flag if the latest message CLEARLY contains one of these:
+- A direct question to Ross needing his answer ("can you confirm...", "what do you think about...")
+- A request for a decision, approval, or sign-off ("please approve", "need your OK on...")
+- A deadline or time-sensitive ask ("by end of day", "urgent", "ASAP", "waiting on you")
+- A client/supplier explicitly waiting for Ross to provide something
+- An escalation needing Ross's input to unblock
 
-Return ONLY valid JSON, no markdown, no explanation:
-{"needsReply":[1,3],"alerts":[{"type":"email","title":"string max 8 words","reason":"string max 15 words","email_index":1,"priority":"urgent|high|medium"}]}
+Priority:
+- "urgent": blocking someone, client-facing deadline, needs response within hours
+- "high": needs reply today
+- "medium": reply within 2-3 days
 
-needsReply = array of 1-based email indexes. alerts = up to 5 most important items sorted by priority. If NO emails need action, return {"needsReply":[],"alerts":[]}.`,
+Return ONLY valid JSON, no markdown:
+{"needsReply":[1,3],"alerts":[{"type":"email","title":"max 8 words","reason":"max 15 words","email_index":1,"priority":"urgent|high|medium"}]}
+
+needsReply = 1-based indexes. Most inboxes should have 0-3 items flagged. If nothing needs action: {"needsReply":[],"alerts":[]}.`,
       `Emails:\n${emailCtx}`
     );
     const clean=reply.replace(/```json|```/g,'').trim();
