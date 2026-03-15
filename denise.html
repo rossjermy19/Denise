@@ -933,7 +933,8 @@ async function fetchOutlookCalendarWeek(){
 
 async function fetchEmails(){
   if(S.emailsLoading) { console.log('[Denise] fetchEmails already in progress, skipping'); return; }
-  S.emailsLoading=true;S.emailsError=null;S.alertsGenerated=false;render();
+  const prevIds = S.emails.map(e=>e.threadId).join(',');
+  S.emailsLoading=true;S.emailsError=null;render();
   try{
     const token = await getGoogleToken();
 
@@ -1024,7 +1025,9 @@ async function fetchEmails(){
     S.emailsError = e.message;
   }
   S.emailsLoading = false; render();
-  if(S.emails.length > 0 && !S.alertsGenerated) generateAlerts();
+  const newIds = S.emails.map(e=>e.threadId).join(',');
+  const emailsChanged = newIds !== prevIds;
+  if(S.emails.length > 0 && (!S.alertsGenerated || emailsChanged)) generateAlerts();
   // Also fetch calendar now we have a Google token
   if(window._gTok && S.calEvents.length === 0){ fetchCalendar(); fetchCalendarWeek(); }
 }
@@ -1394,10 +1397,6 @@ async function sendReply(email){
   }
 }
 
-
-async function fetchData(){
-  try{const res=await fetch(`${API()}/api/data`);const d=await res.json();S.tasks=d.tasks||[];S.calls=d.calls||[];S.stats=d.stats||{};render();}catch{}
-}
 async function toggleTask(id){
   S.tasks=S.tasks.map(t=>t.id===id?{...t,status:t.status==='done'?'open':'done'}:t);render();
   try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH'});}catch{}
@@ -1446,7 +1445,17 @@ async function forceSyncPocket(){
 }
 
 async function fetchData(){
-  try{const res=await fetch(`${API()}/api/data`);const d=await res.json();S.tasks=d.tasks||[];S.calls=d.calls||[];S.stats=d.stats||{};render();}catch{}
+  try{
+    const res=await fetch(`${API()}/api/data`);
+    const d=await res.json();
+    console.log('[Denise] fetchData:', d.tasks?.length||0, 'tasks,', d.calls?.length||0, 'recordings');
+    S.tasks=d.tasks||[];S.calls=d.calls||[];S.stats=d.stats||{};render();
+    // Auto-resync from Pocket if backend lost data (Railway redeploy wipes db.json)
+    if(S.calls.length===0 && localStorage.getItem('pa_pocket_key') && !S.syncing){
+      console.log('[Denise] No recordings on backend but Pocket key exists — auto-resyncing');
+      syncPocket();
+    }
+  }catch(e){ console.error('[Denise] fetchData failed:', e); }
 }
 async function toggleTask(id){
   S.tasks=S.tasks.map(t=>t.id===id?{...t,status:t.status==='done'?'open':'done'}:t);render();
