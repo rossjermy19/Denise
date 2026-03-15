@@ -628,6 +628,7 @@ async function fetchCalendarForDay(dayOffset){
           startStr: allDay ? 'All day' : start ? start.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : '',
           location: ev.location || '',
           attendees: (ev.attendees||[]).map(a=>a.displayName||a.email).slice(0,5),
+          hangoutLink: ev.hangoutLink || ev.conferenceData?.entryPoints?.[0]?.uri || '',
         };
       });
   }catch(e){ console.error('[Denise] Calendar day fetch failed:', e); return []; }
