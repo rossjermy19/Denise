@@ -215,6 +215,42 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ── Setup wizard ── */
+#setup{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:40px 20px;background:var(--bg)}
+.wiz{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:40px;max-width:500px;width:100%;box-shadow:var(--shadow-md)}
+.wbrand{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.wbico{width:40px;height:40px;border-radius:10px;background:var(--purple-dim);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.wtitle{font-family:var(--fb);font-size:22px;font-weight:700;color:var(--text)}
+.wsub{font-size:13px;color:var(--muted);margin-bottom:28px;margin-left:52px}
+.wcard{border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;background:var(--surface);transition:all .2s}
+.wcard.active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.wcard.dim{opacity:.5}
+.srow{display:flex;align-items:flex-start;gap:12px}
+.srow.hc{margin-bottom:14px}
+.snum{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-size:11px;font-weight:500;color:var(--muted);flex-shrink:0;margin-top:1px}
+.snum.active{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.snum.done{border-color:var(--success);color:white;background:var(--success)}
+.stitle{font-size:14px;font-weight:600;color:var(--text);margin-bottom:2px}
+.shint{font-size:12px;color:var(--muted)}
+.winp{width:100%;padding:9px 12px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-family:var(--body);outline:none;margin-top:12px;transition:border-color .15s}
+.winp:focus{border-color:var(--accent)}
+.werr{font-size:12px;color:var(--danger);margin-top:6px;font-family:var(--fd)}
+.wok{font-size:12px;color:var(--success);margin-top:6px;font-family:var(--fd)}
+.wnote{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6}
+.brow{display:flex;gap:8px;margin-top:12px}
+.wbtn{padding:9px 20px;border-radius:50px;border:none;font-size:13px;font-family:var(--fb);font-weight:600;cursor:pointer;transition:all .15s}
+.wbtn.pri{background:var(--accent);color:white}
+.wbtn.pri:hover{opacity:.9}
+.wbtn.sec{background:transparent;color:var(--text2);border:1px solid var(--border)}
+.wbtn.sec:hover{border-color:var(--accent);color:var(--accent)}
+.crow{margin-top:12px}
+.clbl{font-family:var(--fd);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.cbox{display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:9px 12px;gap:10px}
+.cval{flex:1;font-family:var(--fd);font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cbtn{padding:4px 11px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:11px;font-family:var(--fd);cursor:pointer;transition:all .15s;flex-shrink:0}
+.cbtn:hover{background:var(--accent);color:white;border-color:var(--accent)}
+.bdg.bs{background:var(--success-dim);color:var(--success);font-family:var(--fd);font-size:11px;padding:3px 9px;border-radius:20px}
 </style>
 </head>
 <body>
@@ -246,6 +282,487 @@ function initials(c){return(c.speakers?.[0]?.slice(0,2)||c.title?.slice(0,2)||'?
 function fmtDate(d){try{return new Date(d).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});}catch{return'';}}
 function fmtEmailDate(d){if(!d)return'';const dt=new Date(d),now=new Date(),diff=now-dt;if(diff<86400000)return dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});if(diff<604800000)return dt.toLocaleDateString('en-GB',{weekday:'short'});return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'});}
 
+async function callClaude(system,msg){
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,system,messages:[{role:'user',content:msg}]})});
+  const d=await res.json();return d.content?.[0]?.text||'No response.';
+}
+
+async function callClaudeMCP(system,msg,mcpServers){
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,system,messages:[{role:'user',content:msg}],mcp_servers:mcpServers})});
+  const d=await res.json();
+  return (d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+}
+
+async function fetchEmails(){
+  S.emailsLoading=true;S.emailsError=null;render();
+  try{
+    // Get OAuth token via Google Identity Services
+    const token = await new Promise((resolve, reject) => {
+      if(window._gTok && window._gExp > Date.now()){ resolve(window._gTok); return; }
+      if(!window.google || !window.google.accounts){ reject(new Error('Google sign-in loading, try again in a moment')); return; }
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: '597561744602-3pmav3dbg17itvh5d7kgr1ddil9ii548.apps.googleusercontent.com',
+        scope: 'https://www.googleapis.com/auth/gmail.readonly',
+        callback: (resp) => {
+          if(resp.error){ reject(new Error(resp.error)); return; }
+          window._gTok = resp.access_token;
+          window._gExp = Date.now() + 3500000;
+          resolve(resp.access_token);
+        },
+        error_callback: (err) => reject(new Error(err.type + ': ' + (err.message||'')))
+      });
+      client.requestAccessToken();
+    });
+
+    // Fetch message list
+    const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    const listData = await listRes.json();
+    if(listData.error) throw new Error(listData.error.message);
+
+    // Fetch each message metadata in parallel
+    const msgs = listData.messages || [];
+    const details = await Promise.all(msgs.map(m =>
+      fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + m.id + '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date', {
+        headers: { Authorization: 'Bearer ' + token }
+      }).then(r => r.json())
+    ));
+
+    S.emails = details.map(m => {
+      const hdrs = m.payload?.headers || [];
+      const get = n => (hdrs.find(h => h.name.toLowerCase() === n.toLowerCase()) || {}).value || '';
+      const from = get('From');
+      const fm = from.match(/^(.*?)\s*<(.+?)>$/) || [null, from, from];
+      const dt = new Date(get('Date'));
+      return {
+        id: m.id, threadId: m.threadId,
+        subject: get('Subject') || '(no subject)',
+        from_name: (fm[1] || '').replace(/"/g, '').trim() || fm[2],
+        from_email: fm[2] || from,
+        date: isNaN(dt) ? '' : dt.toLocaleDateString('en-GB', {day:'numeric', month:'short'}),
+        snippet: (m.snippet || '').slice(0, 120),
+        is_unread: (m.labelIds || []).includes('UNREAD'),
+      };
+    });
+  } catch(e) {
+    console.error('Gmail:', e);
+    S.emails = [];
+    S.emailsError = e.message;
+  }
+  S.emailsLoading = false; render();
+  if(S.emails.length > 0 && !S.alertsGenerated) generateAlerts();
+}
+
+async function fetchEmailBody(emailId){
+  try{
+    const text=await callClaudeMCP(
+      'Use Gmail MCP to get the full content of one email. Return ONLY a JSON object (no markdown) with: body (string, plain text max 2000 chars), from_name (string), from_email (string), subject (string), date (string).',
+      `Get full body of Gmail message ID: ${emailId}. JSON only.`,
+      [{type:'url',url:'https://gmail.mcp.claude.com/mcp',name:'gmail'}]
+    );
+    const clean=text.replace(/```json|```/g,'').trim();
+    const idx=clean.indexOf('{');
+    return JSON.parse(idx>=0?clean.slice(idx):clean);
+  }catch(e){return null;}
+}
+
+async function generateAlerts(){
+  S.alertsLoading=true;S.alertsGenerated=true;render();
+  try{
+    const emailCtx=S.emails.slice(0,20).map((e,i)=>`${i+1}. From: ${e.from_name||e.from_email} <${e.from_email}> | Subject: ${e.subject} | Preview: ${e.snippet} | Unread: ${e.is_unread}`).join('\n');
+    const reply=await callClaude(
+      'You are Denise, PA for Ross Jermy at Moov Parcel (UK shipping logistics). Analyse these emails and identify which ones need a reply — direct questions, requests, client/supplier emails awaiting action, anything requiring a decision. Return ONLY valid JSON with no other text: {"needsReply":[1,3,5],"alerts":[{"type":"email","title":"string max 8 words","reason":"string max 15 words","email_index":1,"priority":"high"}]}. needsReply is an array of 1-based email indexes. alerts contains up to 5 most urgent items.',
+      `Emails:\n${emailCtx}`
+    );
+    const clean=reply.replace(/```json|```/g,'').trim();
+    const match=clean.match(/\{[\s\S]*\}/);
+    if(match){
+      const parsed=JSON.parse(match[0]);
+      // Mark needsReply on email objects
+      S.emails.forEach((e,i)=>{ e.needsReply=false; });
+      (parsed.needsReply||[]).forEach(idx=>{ if(S.emails[idx-1]) S.emails[idx-1].needsReply=true; });
+      S.emailAlerts=parsed.alerts||[];
+    }
+  }catch(e){console.error('Alerts:',e);S.emailAlerts=[];}
+  S.alertsLoading=false;render();
+}
+
+async function draftReply(email){
+  S.composingReply=email;S.replyDraft='Drafting reply...';render();
+  try{
+    const draft=await callClaude(
+      'Draft a professional, concise email reply for Ross at Nino Logistics/Moov Parcel UK. Return only the email body text.',
+      `Draft reply to:\nFrom: ${email.from_name||email.from_email}\nSubject: ${email.subject}\nContent: ${email.body||email.snippet}`
+    );
+    S.replyDraft=draft;
+  }catch{S.replyDraft='';}
+  render();
+}
+
+async function fetchClickUp(){
+  S.cuLoading=true;render();
+  try{
+    const res=await fetch(`https://api.clickup.com/api/v2/team/${CLICKUP_TEAM}/task?assignees[]=${CLICKUP_USER}&include_closed=false&subtasks=true&page=0&order_by=due_date`,{headers:{Authorization:CLICKUP_TOKEN}});
+    const d=await res.json();
+    S.cuTasks=(d.tasks||[]).slice(0,60);
+  }catch(e){console.error('ClickUp:',e);S.cuTasks=[];}
+  S.cuLoading=false;render();
+}
+
+async function completeClickUpTask(taskId,taskName){
+  if(!confirm(`Mark "${taskName}" as complete in ClickUp?`))return;
+  S.cuCompleted[taskId]=true;render();
+  try{
+    await fetch(`https://api.clickup.com/api/v2/task/${taskId}`,{method:'PUT',headers:{Authorization:CLICKUP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({status:'complete'})});
+    setTimeout(()=>{S.cuTasks=S.cuTasks.filter(t=>t.id!==taskId);render();},500);
+  }catch(e){delete S.cuCompleted[taskId];render();}
+}
+
+async function fetchData(){
+  try{const res=await fetch(`${API()}/api/data`);const d=await res.json();S.tasks=d.tasks||[];S.calls=d.calls||[];S.stats=d.stats||{};render();}catch{}
+}
+async function toggleTask(id){
+  S.tasks=S.tasks.map(t=>t.id===id?{...t,status:t.status==='done'?'open':'done'}:t);render();
+  try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH'});}catch{}
+}
+async function addTask(text){
+  if(!text.trim())return;
+  const tmp={id:'tmp_'+Date.now(),text:text.trim(),due:'Today',status:'open',source:'manual'};
+  S.tasks=[tmp,...S.tasks];S.newTask='';render();
+  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim()})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);render();}catch{}
+}
+async function deleteCall(id){
+  const call=S.calls.find(c=>c.id===id);
+  if(!confirm(`Remove "${call?.title||'this recording'}" from Denise?\n\nThis will not delete it from your Pocket app.`))return;
+  S.calls=S.calls.filter(c=>c.id!==id);S.tasks=S.tasks.filter(t=>t.recordingId!==id);
+  if(S.selectedCall?.id===id)S.selectedCall=null;
+  S.stats={...S.stats,totalCalls:S.calls.length};render();
+  try{await fetch(`${API()}/api/calls/${id}`,{method:'DELETE'});await fetchData();}catch{await fetchData();}
+}
+async function syncPocket(){
+  S.syncing=true;render();
+  try{const res=await fetch(`${API()}/api/sync`,{method:'POST'});const d=await res.json();S.syncMsg=d.message||d.error;await fetchData();}catch{S.syncMsg='Sync failed';}
+  S.syncing=false;render();setTimeout(()=>{S.syncMsg=null;render();},4000);
+}
+async function forceSyncPocket(){
+  S.syncing=true;render();
+  try{const res=await fetch(`${API()}/api/sync/force`,{method:'POST'});const d=await res.json();S.syncMsg=d.message||d.error;await fetchData();}catch{S.syncMsg='Sync failed';}
+  S.syncing=false;render();setTimeout(()=>{S.syncMsg=null;render();},5000);
+}
+
+async function sendChat(msg){
+  if(!msg.trim()||S.chatLoading)return;
+  S.messages.push({role:'user',text:msg});S.chatLoading=true;render();scrollChat();
+  const tCtx=S.tasks.slice(0,10).map(t=>`- [${t.status}] ${t.text} (due:${t.due})`).join('\n');
+  const rCtx=S.calls.slice(0,5).map(c=>`- "${c.title}": ${c.bulletPoints?.join(';')||'no summary'}`).join('\n');
+  const eCtx=S.emails.slice(0,8).map(e=>`- From ${e.from_name||e.from_email}: "${e.subject}" — ${e.snippet?.slice(0,80)}`).join('\n');
+  const cCtx=S.cuTasks.slice(0,8).map(t=>`- [${t.status?.status}] ${t.name} (${t.priority?.priority||'normal'})`).join('\n');
+  const sys=`You are Denise, sharp friendly PA for Ross at Nino Logistics/Moov Parcel UK. Concise, warm, practical. Max 150 words unless drafting.\n\nPocket tasks:\n${tCtx||'None'}\nRecordings:\n${rCtx||'None'}\nGmail:\n${eCtx||'Not loaded'}\nClickUp:\n${cCtx||'Not loaded'}`;
+  try{const r=await callClaude(sys,msg);S.messages.push({role:'ai',text:r});}
+  catch{S.messages.push({role:'ai',text:'Could not reach API.'});}
+  S.chatLoading=false;render();scrollChat();
+}
+function scrollChat(){setTimeout(()=>{const m=document.querySelector('.msgs');if(m)m.scrollTop=m.scrollHeight;},50);}
+
+async function wizCheckBackend(){
+  S.checkingBackend=true;S.backendErr='';render();
+  try{const url=S.backendUrl.replace(/\/$/,'');const res=await fetch(`${url}/health`,{signal:AbortSignal.timeout(8000)});if(!res.ok)throw new Error();localStorage.setItem('pa_api_base',url);S.wizStep=2;}
+  catch{S.backendErr='Could not reach that URL. Check Railway has finished deploying.';}
+  S.checkingBackend=false;render();
+}
+async function wizVerifyKey(){
+  const key=document.getElementById('apiKey')?.value||S.apiKey;S.apiKey=key;
+  S.verifyingKey=true;S.keyResult=null;render();const _vkTimeout=setTimeout(()=>{if(S.verifyingKey){S.verifyingKey=false;S.keyResult={ok:false,error:'Timed out — check your API key and try again'};render();}},15000);
+  try{const res=await fetch(`${API()}/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});const data=await res.json();S.keyResult=data;clearTimeout(_vkTimeout);if(data.ok){await fetch(`${API()}/api/setup/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});S.wizStep=3;}}
+  catch{S.keyResult={ok:false,error:'Could not reach backend'};}
+  clearTimeout(_vkTimeout);S.verifyingKey=false;render();
+}
+async function wizCheckWebhook(){
+  S.checkingWebhook=true;S.webhookResult=null;render();
+  try{const res=await fetch(`${API()}/api/setup/verify-webhook`,{method:'POST'});const data=await res.json();S.webhookResult=data;if(data.ok){localStorage.setItem('pa_setup_done','1');setTimeout(()=>{render();fetchData();startPolling();},1000);}else S.webhookResult={ok:false,message:'No recordings yet — make a short test recording on your Pocket first.'};}
+  catch{S.webhookResult={ok:false,message:'Could not reach backend at '+API()};}
+  S.checkingWebhook=false;render();
+}
+async function wizSkip(){
+  try{await fetch(`${API()}/api/setup/complete`,{method:'POST'});}catch{}
+  localStorage.setItem('pa_setup_done','1');render();fetchData();startPolling();
+}
+function copyText(text,btnId){
+  navigator.clipboard.writeText(text);
+  const btn=document.getElementById(btnId);
+  if(btn){btn.textContent='Copied!';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied');},2000);}
+}
+
+function renderSetup(){
+  const whu=S.backendUrl?`${S.backendUrl.replace(/\/$/,'')}/webhook/pocket`:'';
+  return `<div id="setup"><div class="wiz">
+  <div class="wbrand"><div class="wbico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div><div><div class="wtitle">Meet Denise</div></div></div>
+  <div class="wsub">Your unified PA — Pocket &amp; Gmail in one place</div>
+  <div class="wcard ${S.wizStep===1?'active':''} ${S.wizStep<1?'dim':''}">
+    <div class="srow ${S.wizStep===1?'hc':''}"><div class="snum ${S.wizStep>1?'done':S.wizStep===1?'active':''}">${S.wizStep>1?'✓':'1'}</div><div style="flex:1"><div class="stitle">Enter your Railway backend URL</div><div class="shint">The URL Railway gave you after deploying</div></div>${S.wizStep>1?'<span class="bdg bs">Connected</span>':''}</div>
+    ${S.wizStep===1?`<input class="winp" id="backendUrl" type="text" value="${esc(S.backendUrl)}" placeholder="https://your-app.up.railway.app" />${S.backendErr?`<div class="werr">${esc(S.backendErr)}</div>`:''}<div class="brow"><button class="wbtn pri" id="btnCheckBackend">${S.checkingBackend?'Connecting...':'Connect →'}</button></div>`:''}
+  </div>
+  <div class="wcard ${S.wizStep===2?'active':''} ${S.wizStep<2?'dim':''}">
+    <div class="srow ${S.wizStep===2?'hc':''}"><div class="snum ${S.wizStep>2?'done':S.wizStep===2?'active':''}">${S.wizStep>2?'✓':'2'}</div><div style="flex:1"><div class="stitle">Paste your Pocket API key</div><div class="shint">Pocket app → Developer settings</div></div>${S.wizStep>2&&S.keyResult?.ok?`<span class="bdg bs">${S.keyResult.recordingCount} recordings</span>`:''}</div>
+    ${S.wizStep===2?`<input class="winp" id="apiKey" type="text" value="${esc(S.apiKey)}" placeholder="pk_xxxxxxxxxxxxxxxx" />${S.keyResult&&!S.keyResult.ok?`<div class="werr">${esc(S.keyResult.error)}</div>`:''}<div class="brow"><button class="wbtn pri" id="btnVerifyKey">${S.verifyingKey?'Verifying...':'Verify key →'}</button></div>`:''}
+  </div>
+  <div class="wcard ${S.wizStep===3?'active':''} ${S.wizStep<3?'dim':''}">
+    <div class="srow ${S.wizStep===3?'hc':''}"><div class="snum ${S.wizStep===3?'active':''}">3</div><div style="flex:1"><div class="stitle">Connect Pocket webhook</div><div class="shint">Pocket app → Developer settings → Webhook URL</div></div></div>
+    ${S.wizStep===3?`<div class="crow"><div class="clbl">Webhook URL</div><div class="cbox"><span class="cval">${esc(whu)}</span><button class="cbtn" id="copyUrl" onclick="copyText('${esc(whu)}','copyUrl')">Copy</button></div></div><div class="wnote">If Pocket already saved the webhook URL, just click Go to dashboard.</div>${S.webhookResult&&!S.webhookResult.ok?`<div class="werr">${esc(S.webhookResult.message)}</div>`:''}${S.webhookResult?.ok?`<div class="wok">✓ Webhook working!</div>`:''}<div class="brow"><button class="wbtn pri" id="btnSkip">Go to dashboard →</button><button class="wbtn sec" id="btnCheckWebhook">${S.checkingWebhook?'Checking...':'Verify recording'}</button></div>`:''}
+  </div>
+  <div class="stcard"><div class="sttitle">Status</div>
+    ${[['Backend reachable',S.wizStep>1],['Pocket API key verified',S.wizStep>2],['Webhook configured',!!S.webhookResult?.ok]].map(([l,ok])=>`<div class="strow"><div class="stdot ${ok?'ok':''}"></div><span style="color:${ok?'var(--text)':'var(--muted)'}">${l}</span></div>`).join('')}
+  </div>
+  </div></div>`;
+}
+
+function renderDash(){
+  const overdue=S.tasks.filter(t=>t.status==='overdue').length;
+  const unread=S.emails.filter(e=>e.is_unread).length;
+  const today=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+  return `<div>
+  <div class="header">
+    <div><div class="logo">DENISE <span>/ ROSS'S PA</span></div><div class="dateline">${today.toUpperCase()}</div></div>
+    <div class="nav">
+      <button class="nav-btn ${S.tab==='dashboard'?'active':''}" data-tab="dashboard">DASHBOARD</button>
+      <button class="nav-btn ${S.tab==='gmail'?'active':''}" data-tab="gmail">GMAIL${unread>0?'<span class="bdot"></span>':''}</button>
+      
+      <button class="nav-btn ${S.tab==='pocket'?'active':''}" data-tab="pocket">RECORDINGS</button>
+      <button class="nav-btn ${S.tab==='pa'?'active':''}" data-tab="pa">CHAT WITH DENISE</button>
+    </div>
+    <div class="hdr-right">
+      ${S.syncMsg?`<span class="smsg">${esc(S.syncMsg)}</span>`:''}
+      <button class="hbtn" id="btnForceSync" ${S.syncing?'disabled':''}>↻ Refresh all</button>
+      <button class="hbtn" id="btnSync" ${S.syncing?'disabled':''}>${S.syncing?'Syncing...':'↓ Sync Pocket'}</button>
+      <div class="live"><div class="ldot"></div>Live</div>
+      <button class="rbtn" id="btnReset">Reset</button>
+    </div>
+  </div>
+  <div class="body">
+    ${S.tab==='dashboard'?renderDashTab(overdue,unread):S.tab==='gmail'?renderGmailTab():S.tab==='clickup'?renderClickUpTab():S.tab==='pocket'?renderPocketTab(overdue):renderPATab()}
+  </div></div>`;
+}
+
+function renderDashTab(overdue,unread){
+  const needsReply = S.emails.filter(e=>e.is_unread||e.needsReply).sort((a,b)=>{
+    // Sort: needsReply first, then unread, then rest
+    if(a.needsReply&&!b.needsReply)return -1;
+    if(!a.needsReply&&b.needsReply)return 1;
+    if(a.is_unread&&!b.is_unread)return -1;
+    if(!a.is_unread&&b.is_unread)return 1;
+    return 0;
+  });
+  const hi=S.emailAlerts.filter(a=>a.priority==='high');
+
+  return `
+  <!-- 4 stat tiles -->
+  <div class="stats">
+    <div class="stat"><div class="slbl">Pocket tasks</div><div class="sval" style="color:var(--accent)">${S.stats.open||0}</div></div>
+    <div class="stat"><div class="slbl">Overdue</div><div class="sval" style="color:var(--danger)">${overdue||0}</div></div>
+    <div class="stat"><div class="slbl">Unread emails</div><div class="sval" style="color:var(--teal)">${unread}</div></div>
+    <div class="stat"><div class="slbl">Recordings</div><div class="sval" style="color:var(--purple)">${S.stats.totalCalls||0}</div></div>
+  </div>
+
+  <!-- Priority emails section -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="chdr">
+      <span class="ctitle">Emails needing attention</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        ${needsReply.length>0?`<span class="bdg bd">${needsReply.length} to action</span>`:`<span class="bdg bt">${unread} unread</span>`}
+        <button style="padding:4px 10px;border-radius:var(--r);border:1px solid var(--border);background:transparent;font-size:11px;font-family:var(--fd);color:var(--muted);cursor:pointer" id="btnRefreshEmail">↻</button>
+      </div>
+    </div>
+    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Scanning your inbox...</div>`:
+      S.emails.length===0?`
+        <div style="font-size:13px;color:var(--muted);padding:4px 0">Load your Gmail inbox — Denise will flag emails needing a reply.</div>
+        <button style="margin-top:10px;padding:8px 18px;border-radius:var(--r);border:none;background:var(--accent);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnLoadEmail">Load Gmail</button>
+      `:needsReply.length===0?`
+        <div style="font-size:13px;color:var(--muted);padding:4px 0">✓ No emails currently need a reply.</div>
+        <div style="margin-top:10px">${S.emails.slice(0,5).map((e,i)=>`
+          <div class="erow ${e.is_unread?'unread':''}" data-email="${i}" style="padding:7px 8px">
+            <div class="edot ${e.is_unread?'':'read'}"></div>
+            <div class="einfo"><div class="esender">${esc(e.from_name||e.from_email)}</div><div class="esubj">${esc(e.subject)}</div></div>
+            <div class="etime">${esc(fmtEmailDate(e.date))}</div>
+          </div>`).join('')}
+        </div>
+      `:`
+        ${needsReply.map((e,i)=>{
+          const origIdx=S.emails.indexOf(e);
+          const urgent=e.needsReply;
+          return`<div class="priority-email" data-email="${origIdx}">
+            <div class="priority-stripe" style="background:${urgent?'var(--danger)':'var(--accent)'}"></div>
+            <div class="priority-email-body">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+                <span class="priority-label" style="background:${urgent?'var(--danger-dim)':'var(--accent-light)'};color:${urgent?'var(--danger-text)':'var(--accent)'}">
+                  ${urgent?'↩ Reply needed':'● Unread'}
+                </span>
+              </div>
+              <div class="priority-from">${esc(e.from_name||e.from_email)}</div>
+              <div class="priority-subject">${esc(e.subject)}</div>
+              <div class="priority-snippet">${esc((e.snippet||'').slice(0,110))}</div>
+            </div>
+            <div class="priority-time">${esc(fmtEmailDate(e.date))}</div>
+          </div>`;
+        }).join('')}
+      `}
+  </div>
+
+  <!-- Recordings section -->
+  <div class="card">
+    <div class="chdr">
+      <span class="ctitle">Recent recordings</span>
+      <span class="bdg" style="background:var(--purple-dim);color:var(--purple)">${S.stats.totalCalls||0} total</span>
+    </div>
+    ${S.calls.length===0?`<div style="font-size:13px;color:var(--muted)">No recordings yet. Make a recording on your Pocket device.</div>`:`
+      ${S.calls.slice(0,5).map(call=>{
+        const bg=['#E8F0FE','#FCE8F3','#E6F4EA','#FEF7E0','#F3E8FF'][Math.abs(call.title.charCodeAt(0))%5];
+        const fg=['#1A73E8','#D4006A','#188038','#E37400','#7B1FA2'][Math.abs(call.title.charCodeAt(0))%5];
+        const initials=(call.title||'?').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+        return`<div class="call-row" data-call="${esc(call.id)}" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-light);cursor:pointer">
+          <div style="width:38px;height:38px;border-radius:10px;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0">${initials}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(call.title)}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtDate(call.createdAt)}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div>
+          </div>
+          ${call.bulletPoints?.length>0?`<span style="font-size:11px;font-family:var(--fd);padding:3px 8px;border-radius:20px;background:var(--teal-dim);color:var(--teal-text)">summary</span>`:`<span style="font-size:11px;font-family:var(--fd);padding:3px 8px;border-radius:20px;background:var(--bg);color:var(--muted)">no summary</span>`}
+        </div>`;
+      }).join('')}
+    `}
+  </div>`;
+}
+
+
+function renderGmailTab(){
+  const sel=S.selectedEmail;
+  return `<div style="display:grid;grid-template-columns:${sel?'1fr 1.5fr':'1fr'};gap:14px;align-items:start">
+  <div class="card">
+    <div class="chdr"><span class="ctitle">Inbox</span><div style="display:flex;gap:8px;align-items:center"><span class="bdg bt">${S.emails.filter(e=>e.is_unread).length} unread</span><button style="padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--accent);font-size:11px;font-family:var(--fd);cursor:pointer" id="btnRefreshEmail">↻</button></div></div>
+    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading your inbox...</div>`:S.emails.length===0?`<div style="font-size:13px;color:var(--muted);padding:8px 0">No emails loaded.<br><br><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Load Gmail inbox</button></div>`:
+    S.emails.map((e,i)=>`<div class="erow ${e.is_unread?'unread':''} ${sel&&S.selectedEmailIdx===i?'sel':''}" data-email="${i}"><div class="edot ${e.is_unread?'':'read'}"></div><div class="einfo"><div class="esender">${esc(e.from_name||e.from_email)}</div><div class="esubj">${esc(e.subject)}</div><div class="eprev">${esc(e.snippet)}</div></div><div class="etime">${esc(fmtEmailDate(e.date))}</div></div>`).join('')}
+  </div>
+  ${sel?`<div>
+    <div class="edetail">
+      <div class="esubject">${esc(sel.subject)}</div>
+      <div class="emeta">From: ${esc(sel.from_name||sel.from_email)}${sel.from_email&&sel.from_name?` &lt;${esc(sel.from_email)}&gt;`:''}<br>${sel.date?`Date: ${new Date(sel.date).toLocaleString('en-GB')}`:''}
+      </div>
+      ${sel.bodyLoading?`<div class="ldr"><div class="spinner"></div>Loading email...</div>`:`<div class="ebody">${esc(sel.body||sel.snippet||'')}</div>`}
+      <div class="eactions">
+        <button class="ebtn pri" id="btnDraftReply">✏ Draft reply with Denise</button>
+        <button class="ebtn" id="btnCloseEmail">✕ Close</button>
+      </div>
+    </div>
+    ${S.composingReply?.id===sel.id?`<div class="compose"><div class="comphdr">Reply to: ${esc(sel.from_name||sel.from_email)}</div><textarea class="compa" id="replyArea">${esc(S.replyDraft)}</textarea><div class="compftr"><button class="ebtn" id="btnCancelReply">Cancel</button><button class="ebtn pri" id="btnCopyReply">Copy reply text</button></div></div>`:''}
+  </div>`:''}
+  </div>`;
+}
+
+function renderClickUpTab(){
+  const hi=S.cuTasks.filter(t=>t.priority?.priority==='urgent'||t.priority?.priority==='high');
+  const lo=S.cuTasks.filter(t=>t.priority?.priority!=='urgent'&&t.priority?.priority!=='high');
+  return `<div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <div><div style="font-size:18px;font-weight:600">ClickUp Inbox</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Tasks assigned to you · ${S.cuTasks.length} total</div></div>
+    <button style="padding:9px 18px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);color:var(--accent);font-size:12px;font-family:var(--fd);cursor:pointer;box-shadow:var(--shadow)" id="btnRefreshCU">↻ Refresh</button>
+  </div>
+  ${S.cuLoading?`<div class="card"><div class="ldr"><div class="spinner"></div>Loading your ClickUp tasks...</div></div>`:S.cuTasks.length===0?`<div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--muted);margin-bottom:16px">No tasks loaded yet.</div><button style="padding:10px 20px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadCU2">Load my ClickUp tasks</button></div>`:
+  `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    <div class="card"><div class="chdr"><span class="ctitle">High priority</span><span class="bdg bd">${hi.length}</span></div>
+    ${hi.length===0?'<div style="font-size:13px;color:var(--muted)">No urgent tasks — nice!</div>':''}
+    ${hi.map(t=>`<div class="curow"><div class="cuchk ${S.cuCompleted[t.id]?'done':''}" data-cu="${esc(t.id)}" data-cuname="${esc(t.name)}">${S.cuCompleted[t.id]?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><div class="cuinfo"><div class="cuname">${esc(t.name)}</div><div class="cumeta">${esc(t.list?.name||'')}${t.due_date?` · Due ${new Date(parseInt(t.due_date)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:''}</div></div><span class="custa">${esc(t.status?.status||'open')}</span></div>`).join('')}
+    </div>
+    <div class="card"><div class="chdr"><span class="ctitle">Normal &amp; low</span><span class="bdg ba">${lo.length}</span></div>
+    ${lo.length===0?'<div style="font-size:13px;color:var(--muted)">No tasks.</div>':''}
+    ${lo.map(t=>`<div class="curow"><div class="cuchk ${S.cuCompleted[t.id]?'done':''}" data-cu="${esc(t.id)}" data-cuname="${esc(t.name)}">${S.cuCompleted[t.id]?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><div class="cuinfo"><div class="cuname">${esc(t.name)}</div><div class="cumeta">${esc(t.list?.name||'')}${t.due_date?` · Due ${new Date(parseInt(t.due_date)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:''}</div></div><span class="custa">${esc(t.status?.status||'open')}</span></div>`).join('')}
+    </div>
+  </div>`}
+  </div>`;
+}
+
+function renderPocketTab(overdue){
+  return `<div class="g2">
+  <div class="card">
+    <div class="chdr"><span class="ctitle">Task board</span><span class="bdg bd">${overdue||0} overdue</span></div>
+    ${S.tasks.length===0?'<div style="font-size:13px;color:var(--muted)">No tasks yet.</div>':''}
+    ${S.tasks.slice(0,12).map(t=>{const done=t.status==='done',ov=t.status==='overdue';return`<div class="trow ${done?'done':''}" data-toggle="${esc(t.id)}"><div class="tchk ${done?'done':''}">${done?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><span class="ttxt ${done?'done':''}">${esc(t.text)}</span>${t.source==='pocket'?'<span class="tsrc">POCKET</span>':''}<span class="tdue ${ov?'ov':''}">${esc(t.due)}</span></div>`;}).join('')}
+    <div class="addrow"><input class="addinp" id="newTask2" placeholder="Add a task..." /><button class="addbtn" id="btnAddTask2">+ Add</button></div>
+  </div>
+  <div class="card">
+    <div class="chdr"><span class="ctitle">Recordings</span><span class="bdg bp">${S.calls.length} total</span></div>
+    ${S.calls.length===0?'<div style="font-size:13px;color:var(--muted)">No recordings yet.</div>':''}
+    ${S.calls.slice(0,8).map(call=>{const[fg,bg]=callColor(call.id),sel=S.selectedCall?.id===call.id;return`<div style="display:flex;align-items:center;gap:6px"><div class="rrow ${sel?'sel':''}" data-call="${esc(call.id)}" style="flex:1;${sel?`background:${bg};border-color:${fg}44`:''}"><div class="avtr" style="background:${bg};color:${fg}">${esc(initials(call))}</div><div class="rinfo"><div class="rname">${esc(call.title)}</div><div class="rsub">${esc(fmtDate(call.createdAt))}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div></div></div><button class="delete-call-btn" data-delete="${esc(call.id)}" style="flex-shrink:0;width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center" onmouseenter="this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--muted)'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/><path d="M9,6V4h6v2"/></svg></button></div>
+    ${sel?`<div class="rdet" style="border-left-color:${fg}"><div class="rdtitle" style="color:${fg}">${esc(call.title?.toUpperCase()||'')}</div>${call.bulletPoints?.length>0?call.bulletPoints.map(b=>`<div style="margin-bottom:3px">· ${esc(b)}</div>`).join(''):call.summary?`<div>${esc(call.summary)}</div>`:'<div>No summary yet.</div>'}${call.actionItems?.length>0?`<div class="rdsec">Action items</div>${call.actionItems.map(a=>`<div style="margin-bottom:2px">→ ${esc(a.title)}</div>`).join('')}`:''}${call.transcript?`<div class="rdsec" style="color:var(--accent-text)">Transcript</div><div class="rdtrans">${esc(call.transcript)}</div>`:''}</div>`:''}`;}).join('')}
+  </div>
+  </div>`;
+}
+
+function renderPATab(){
+  return `<div class="cwrap">
+  <div class="dhdr"><div class="dav"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div><div><div class="dname">Denise</div><div class="dsub">Pocket · Gmail · ClickUp · ${S.tasks.length} tasks · ${S.emails.length} emails · ${S.cuTasks.length} ClickUp tasks</div></div></div>
+  <div class="ccard">
+    <div class="qprompts">${['What needs my attention today?','Summarise my unread emails','Which ClickUp tasks are overdue?','Draft a reply to my most urgent email','What action items came from my last recording?'].map(q=>`<button class="qbtn" data-quick="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+    <div class="msgs" id="messages">
+      ${S.messages.map(m=>`<div class="msg ${m.role}">${m.role==='ai'?`<div class="mico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>`:''}<div class="mbub ${m.role}">${esc(m.text)}</div></div>`).join('')}
+      ${S.chatLoading?`<div class="msg ai"><div class="mico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div><div class="mbub ai"><span class="thk">Denise is thinking...</span></div></div>`:''}
+    </div>
+    <div class="cinrow"><input class="cinp" id="chatInput" placeholder="Ask Denise anything..." /><button class="sbtn" id="btnSend">Send</button></div>
+  </div>
+  </div>`;
+}
+
+function bindEvents(){
+  // Nav
+  document.querySelectorAll('[data-tab]').forEach(btn=>{btn.addEventListener('click',()=>{S.tab=btn.dataset.tab;render();if(S.tab==='gmail'&&S.emails.length===0&&!S.emailsLoading)fetchEmails();if(S.tab==='clickup'&&S.cuTasks.length===0&&!S.cuLoading)fetchClickUp();});});
+  // Wizard
+  const ui=document.getElementById('backendUrl');if(ui)ui.addEventListener('input',e=>S.backendUrl=e.target.value);
+  const bcb=document.getElementById('btnCheckBackend');if(bcb)bcb.addEventListener('click',()=>{S.backendUrl=document.getElementById('backendUrl')?.value||S.backendUrl;wizCheckBackend();});
+  const ki=document.getElementById('apiKey');if(ki)ki.addEventListener('input',e=>S.apiKey=e.target.value);
+  const bvk=document.getElementById('btnVerifyKey');if(bvk)bvk.addEventListener('click',()=>{S.apiKey=document.getElementById('apiKey')?.value||S.apiKey;wizVerifyKey();});
+  const bcw=document.getElementById('btnCheckWebhook');if(bcw)bcw.addEventListener('click',wizCheckWebhook);
+  const bsk=document.getElementById('btnSkip');if(bsk)bsk.addEventListener('click',wizSkip);
+  // Header
+  const bsy=document.getElementById('btnSync');if(bsy)bsy.addEventListener('click',syncPocket);
+  const bfs=document.getElementById('btnForceSync');if(bfs)bfs.addEventListener('click',forceSyncPocket);
+  const brs=document.getElementById('btnReset');if(brs)brs.addEventListener('click',()=>{if(confirm('Reset Denise?')){localStorage.removeItem('pa_setup_done');localStorage.removeItem('pa_api_base');S.wizStep=1;S.apiKey='';S.keyResult=null;S.tasks=[];S.calls=[];S.emails=[];S.cuTasks=[];render();}});
+  // Pocket tasks
+  document.querySelectorAll('[data-toggle]').forEach(r=>r.addEventListener('click',()=>toggleTask(r.dataset.toggle)));
+  const nt=document.getElementById('newTask');if(nt){nt.addEventListener('input',e=>S.newTask=e.target.value);nt.addEventListener('keydown',e=>{if(e.key==='Enter')addTask(nt.value);});}
+  const nt2=document.getElementById('newTask2');if(nt2)nt2.addEventListener('keydown',e=>{if(e.key==='Enter')addTask(nt2.value);});
+  const bat=document.getElementById('btnAddTask');if(bat)bat.addEventListener('click',()=>addTask(document.getElementById('newTask')?.value||''));
+  const bat2=document.getElementById('btnAddTask2');if(bat2)bat2.addEventListener('click',()=>addTask(document.getElementById('newTask2')?.value||''));
+  // Recordings
+  document.querySelectorAll('[data-call]').forEach(r=>{r.addEventListener('click',()=>{const c=S.calls.find(x=>x.id===r.dataset.call);S.selectedCall=S.selectedCall?.id===r.dataset.call?null:c;render();});});
+  document.querySelectorAll('[data-delete]').forEach(b=>{b.addEventListener('click',e=>{e.stopPropagation();deleteCall(b.dataset.delete);});});
+  // Gmail
+  const ble=document.getElementById('btnLoadEmail');if(ble)ble.addEventListener('click',fetchEmails);
+  const ble2=document.getElementById('btnLoadEmail2');if(ble2)ble2.addEventListener('click',fetchEmails);
+  const bre=document.getElementById('btnRefreshEmail');if(bre)bre.addEventListener('click',fetchEmails);
+  document.querySelectorAll('[data-email]').forEach(row=>{row.addEventListener('click',async()=>{const idx=parseInt(row.dataset.email);const email={...S.emails[idx]};S.selectedEmailIdx=idx;S.selectedEmail={...email,bodyLoading:true};S.composingReply=null;render();const full=await fetchEmailBody(email.id);S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});});
+  document.querySelectorAll('[data-goto-email]').forEach(b=>{b.addEventListener('click',()=>{const idx=parseInt(b.dataset.gotoEmail);S.tab='gmail';S.selectedEmailIdx=idx;S.selectedEmail={...S.emails[idx],bodyLoading:true};render();fetchEmailBody(S.emails[idx].id).then(full=>{S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});});});
+  const bdr=document.getElementById('btnDraftReply');if(bdr)bdr.addEventListener('click',()=>draftReply(S.selectedEmail));
+  const bce=document.getElementById('btnCloseEmail');if(bce)bce.addEventListener('click',()=>{S.selectedEmail=null;S.composingReply=null;render();});
+  const bcr=document.getElementById('btnCancelReply');if(bcr)bcr.addEventListener('click',()=>{S.composingReply=null;render();});
+  const bcop=document.getElementById('btnCopyReply');if(bcop)bcop.addEventListener('click',()=>{const a=document.getElementById('replyArea');navigator.clipboard.writeText(a?.value||S.replyDraft);bcop.textContent='Copied!';setTimeout(()=>bcop.textContent='Copy reply text',2000);});
+  // ClickUp
+  const brc=document.getElementById('btnRefreshCU');if(brc)brc.addEventListener('click',fetchClickUp);
+  const blc=document.getElementById('btnLoadCU');if(blc)blc.addEventListener('click',fetchClickUp);
+  const blc2=document.getElementById('btnLoadCU2');if(blc2)blc2.addEventListener('click',fetchClickUp);
+  document.querySelectorAll('[data-cu]').forEach(b=>{b.addEventListener('click',e=>{e.stopPropagation();completeClickUpTask(b.dataset.cu,b.dataset.cuname);});});
+  // Chat
+  const ci=document.getElementById('chatInput');if(ci)ci.addEventListener('keydown',e=>{if(e.key==='Enter'){sendChat(ci.value);ci.value='';}});
+  const bs=document.getElementById('btnSend');if(bs)bs.addEventListener('click',()=>{const i=document.getElementById('chatInput');if(i){sendChat(i.value);i.value='';}});
+  document.querySelectorAll('[data-quick]').forEach(b=>{b.addEventListener('click',()=>{const i=document.getElementById('chatInput');if(i)i.value=b.dataset.quick;});});
+  scrollChat();
+}
+
+let pollInterval=null;
+function startPolling(){if(pollInterval)clearInterval(pollInterval);pollInterval=setInterval(fetchData,30000);}
+
+render();
+if(isSetup()){fetchData();fetchClickUp();startPolling();}
+</script>
+</body>
+</html>
 async function callClaude(system,msg){
   const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,system,messages:[{role:'user',content:msg}]})});
   const d=await res.json();return d.content?.[0]?.text||'No response.';
