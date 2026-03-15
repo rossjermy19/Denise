@@ -521,7 +521,8 @@ async function getGoogleToken(){
 }
 
 async function fetchEmails(){
-  S.emailsLoading=true;S.emailsError=null;render();
+  if(S.emailsLoading) { console.log('[Denise] fetchEmails already in progress, skipping'); return; }
+  S.emailsLoading=true;S.emailsError=null;S.alertsGenerated=false;render();
   try{
     const token = await getGoogleToken();
 
@@ -1213,15 +1214,10 @@ function renderDashTab(overdue,unread){
       `:S.emails.length===0?`
         <div style="font-size:13px;color:var(--muted);padding:4px 0">Load your Gmail inbox — Denise will flag emails needing a reply.</div>
         <button style="margin-top:10px;padding:8px 18px;border-radius:var(--r);border:none;background:var(--accent);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnLoadEmail">Load Gmail</button>
+      `:S.alertsLoading?`
+        <div class="ldr"><div class="spinner"></div>Denise is checking which emails need attention...</div>
       `:needsReply.length===0?`
-        <div style="font-size:13px;color:var(--muted);padding:4px 0">✓ No emails currently need a reply.</div>
-        <div style="margin-top:10px">${S.emails.slice(0,5).map((e,i)=>`
-          <div class="erow ${e.is_unread?'unread':''}" data-goto-email="${i}" style="padding:7px 8px;cursor:pointer">
-            <div class="edot ${e.is_unread?'':'read'}"></div>
-            <div class="einfo"><div class="esender">${esc(e.from_name||e.from_email)}</div><div class="esubj">${esc(e.subject)}</div></div>
-            <div class="etime">${esc(fmtEmailDate(e.date))}</div>
-          </div>`).join('')}
-        </div>
+        <div style="padding:14px 18px;font-size:13px;color:var(--success);font-weight:500">✓ All clear — no emails need a reply right now.</div>
       `:`
         ${needsReply.map((e,i)=>{
           const origIdx=S.emails.indexOf(e);
