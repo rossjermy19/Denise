@@ -24,7 +24,15 @@ const CONFIG_FILE = "./config.json";
 
 function loadDB() { if (!existsSync(DB_FILE)) return { tasks: [], calls: [] }; return JSON.parse(readFileSync(DB_FILE, "utf8")); }
 function saveDB(d) { writeFileSync(DB_FILE, JSON.stringify(d, null, 2)); }
-function loadConfig() { if (!existsSync(CONFIG_FILE)) return { pocketApiKey: "", configured: false }; return JSON.parse(readFileSync(CONFIG_FILE, "utf8")); }
+function loadConfig() {
+  const cfg = existsSync(CONFIG_FILE) ? JSON.parse(readFileSync(CONFIG_FILE, "utf8")) : { pocketApiKey: "", configured: false };
+  // Fall back to env var so key survives redeploys even without browser restore
+  if (!cfg.pocketApiKey && process.env.POCKET_API_KEY) {
+    cfg.pocketApiKey = process.env.POCKET_API_KEY;
+    cfg.configured = true;
+  }
+  return cfg;
+}
 function saveConfig(c) { writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2)); }
 
 async function pocketGet(p, apiKey) {
