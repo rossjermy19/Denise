@@ -350,212 +350,193 @@ app.get("/api/gmail/debug", async (req, res) => {
 ${xml.slice(0, 2000)}`);
 });
 
-// ── Outlook via IMAP/SMTP (no Azure admin needed) ────────────────────
-import { ImapFlow } from "imapflow";
-import { simpleParser } from "mailparser";
-import nodemailer from "nodemailer";
-import ical from "node-ical";
+// ── Outlook via Power Automate webhooks ──────────────────────────────
+// Power Automate pushes emails + calendar events to webhook endpoints.
+// Data is stored in memory + persisted to outlook-data.json.
 
-// Outlook credentials stored in env vars on Railway
-const OL_USER = () => process.env.OUTLOOK_USER || "";
-const OL_PASS = () => process.env.OUTLOOK_APP_PASSWORD || "";
-const OL_IMAP_HOST = () => process.env.OUTLOOK_IMAP_HOST || "outlook.office365.com";
-const OL_SMTP_HOST = () => process.env.OUTLOOK_SMTP_HOST || "smtp.office365.com";
+const OL_DATA_FILE = "./outlook-data.json";
+const OL_WEBHOOK_SECRET = () => process.env.OUTLOOK_WEBHOOK_SECRET || "";
+
+function loadOutlookData() {
+  if (!existsSync(OL_DATA_FILE)) return { emails: [], calendar: [], configured: false };
+  try { return JSON.parse(readFileSync(OL_DATA_FILE, "utf8")); }
+  catch { return { emails: [], calendar: [], configured: false }; }
+}
+function saveOutlookData(d) { writeFileSync(OL_DATA_FILE, JSON.stringify(d, null, 2)); }
+
+let olData = loadOutlookData();
+
+// Verify webhook secret (simple shared-secret auth)
+function checkOlSecret(req, res) {
+  const secret = OL_WEBHOOK_SECRET();
+  if (!secret) return true; // no secret configured = allow all
+  const provided = req.headers["x-webhook-secret"] || req.query.secret || "";
+  if (provided !== secret) { res.status(401).json({ error: "Invalid webhook secret" }); return false; }
+  return true;
+}
 
 app.get("/api/outlook/status", (req, res) => {
-  res.json({ configured: !!(OL_USER() && OL_PASS()), user: OL_USER() || null });
+  res.json({ configured: olData.configured || olData.emails.length > 0, user: "ross.jermy@thedespatchcompany.com" });
 });
 
-app.get("/api/outlook/emails", async (req, res) => {
-  if (!OL_USER() || !OL_PASS()) return res.status(400).json({ error: "Outlook credentials not configured. Set OUTLOOK_USER and OUTLOOK_APP_PASSWORD in Railway env vars." });
-  let client;
-  try {
-    client = new ImapFlow({
-      host: OL_IMAP_HOST(),
-      port: 993,
-      secure: true,
-      auth: { user: OL_USER(), pass: OL_PASS() },
-      logger: false,
-    });
-    await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
-    try {
-      const emails = [];
-      // Fetch the 20 most recent messages
-      const msgs = client.fetch("1:*", { envelope: true, bodyStructure: true, flags: true, uid: true }, { uid: true });
-      const allMsgs = [];
-      for await (const msg of msgs) { allMsgs.push(msg); }
-      // Sort by date descending and take 20
-      allMsgs.sort((a, b) => new Date(b.envelope.date) - new Date(a.envelope.date));
-      for (const msg of allMsgs.slice(0, 20)) {
-        const env = msg.envelope;
-        const from = env.from?.[0] || {};
-        emails.push({
-          id: String(msg.uid),
-          threadId: env.messageId || String(msg.uid),
-          subject: (env.subject || "(no subject)").replace(/^(Re|Fwd|RE|FW):\s*/gi, ""),
-          from_name: from.name || "",
-          from_email: from.address || "",
-          date: env.date ? new Date(env.date).toISOString() : "",
-          snippet: "",
-          is_unread: !msg.flags.has("\\Seen"),
-          msgCount: 1,
-          source: "despatch",
-        });
-      }
-      res.json({ emails });
-    } finally { lock.release(); }
-    await client.logout();
-  } catch (e) {
-    console.error("[Outlook IMAP]", e.message);
-    if (client) try { await client.logout(); } catch {}
-    res.status(500).json({ error: e.message });
+// GET emails from stored data
+app.get("/api/outlook/emails", (req, res) => {
+  const emails = (olData.emails || [])
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+    .slice(0, 30);
+  res.json({ emails });
+});
+
+// GET single email body from stored data
+app.get("/api/outlook/email/:id", (req, res) => {
+  const email = (olData.emails || []).find(e => e.id === req.params.id);
+  if (!email) return res.status(404).json({ error: "Email not found" });
+  res.json({ body: email.body || email.snippet || "", from_name: email.from_name, from_email: email.from_email, subject: email.subject, date: email.date });
+});
+
+// POST reply — not available via Power Automate, inform user
+app.post("/api/outlook/reply", (req, res) => {
+  res.status(501).json({ error: "Outlook replies must be sent directly in Outlook. Draft has been copied to clipboard." });
+});
+
+// DELETE — mark as deleted in our store (can't actually delete via Power Automate)
+app.delete("/api/outlook/email/:id", (req, res) => {
+  const idx = (olData.emails || []).findIndex(e => e.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Email not found" });
+  olData.emails.splice(idx, 1);
+  saveOutlookData(olData);
+  res.json({ ok: true });
+});
+
+// ── Power Automate webhook: receive emails ──────────────────────────
+// Flow sends: { id, subject, from_name, from_email, date, snippet, body, is_unread }
+app.post("/webhook/outlook/email", (req, res) => {
+  if (!checkOlSecret(req, res)) return;
+  const e = req.body;
+  if (!e || !e.subject) return res.status(400).json({ error: "Missing email data" });
+  const email = {
+    id: e.id || e.messageId || `ol-${Date.now()}`,
+    threadId: e.conversationId || e.id || `ol-${Date.now()}`,
+    subject: (e.subject || "(no subject)").replace(/^(Re|Fwd|RE|FW):\s*/gi, ""),
+    from_name: e.from_name || e.from?.name || "",
+    from_email: e.from_email || e.from?.address || e.from?.emailAddress?.address || "",
+    date: e.date || e.receivedDateTime || new Date().toISOString(),
+    snippet: (e.snippet || e.bodyPreview || "").slice(0, 200),
+    body: (e.body || e.bodyPreview || "").slice(0, 5000),
+    is_unread: e.is_unread !== undefined ? e.is_unread : !e.isRead,
+    needsReply: false,
+    msgCount: 1,
+    source: "despatch",
+  };
+  // Deduplicate by id
+  const existing = (olData.emails || []).findIndex(x => x.id === email.id);
+  if (existing >= 0) { olData.emails[existing] = email; }
+  else { olData.emails.unshift(email); }
+  // Keep max 50 emails
+  if (olData.emails.length > 50) olData.emails = olData.emails.slice(0, 50);
+  olData.configured = true;
+  saveOutlookData(olData);
+  console.log(`[Outlook webhook] Email received: ${email.subject} from ${email.from_email}`);
+  res.json({ ok: true });
+});
+
+// ── Power Automate webhook: receive batch of emails ─────────────────
+// Flow can send an array of emails for initial sync
+app.post("/webhook/outlook/emails/batch", (req, res) => {
+  if (!checkOlSecret(req, res)) return;
+  const emails = Array.isArray(req.body) ? req.body : req.body.emails || [];
+  if (!emails.length) return res.status(400).json({ error: "No emails provided" });
+  for (const e of emails) {
+    const email = {
+      id: e.id || e.messageId || `ol-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+      threadId: e.conversationId || e.id || `ol-${Date.now()}`,
+      subject: (e.subject || "(no subject)").replace(/^(Re|Fwd|RE|FW):\s*/gi, ""),
+      from_name: e.from_name || e.from?.name || e.from?.emailAddress?.name || "",
+      from_email: e.from_email || e.from?.address || e.from?.emailAddress?.address || "",
+      date: e.date || e.receivedDateTime || new Date().toISOString(),
+      snippet: (e.snippet || e.bodyPreview || "").slice(0, 200),
+      body: (e.body || e.bodyPreview || "").slice(0, 5000),
+      is_unread: e.is_unread !== undefined ? e.is_unread : !e.isRead,
+      needsReply: false,
+      msgCount: 1,
+      source: "despatch",
+    };
+    const existing = (olData.emails || []).findIndex(x => x.id === email.id);
+    if (existing >= 0) { olData.emails[existing] = email; }
+    else { olData.emails.push(email); }
   }
+  olData.emails.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+  if (olData.emails.length > 50) olData.emails = olData.emails.slice(0, 50);
+  olData.configured = true;
+  saveOutlookData(olData);
+  console.log(`[Outlook webhook] Batch: ${emails.length} emails received`);
+  res.json({ ok: true, count: emails.length });
 });
 
-app.get("/api/outlook/email/:uid", async (req, res) => {
-  if (!OL_USER() || !OL_PASS()) return res.status(400).json({ error: "Not configured" });
-  let client;
-  try {
-    client = new ImapFlow({
-      host: OL_IMAP_HOST(), port: 993, secure: true,
-      auth: { user: OL_USER(), pass: OL_PASS() }, logger: false,
-    });
-    await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
-    try {
-      const msg = await client.fetchOne(req.params.uid, { source: true }, { uid: true });
-      if (!msg || !msg.source) return res.status(404).json({ error: "Email not found" });
-      const parsed = await simpleParser(msg.source);
-      res.json({
-        body: (parsed.text || parsed.html?.replace(/<[^>]*>/g, " ") || "").slice(0, 3000),
-        from_name: parsed.from?.value?.[0]?.name || "",
-        from_email: parsed.from?.value?.[0]?.address || "",
-        subject: parsed.subject || "",
-        date: parsed.date ? parsed.date.toISOString() : "",
-      });
-    } finally { lock.release(); }
-    await client.logout();
-  } catch (e) {
-    console.error("[Outlook email body]", e.message);
-    if (client) try { await client.logout(); } catch {}
-    res.status(500).json({ error: e.message });
-  }
+// ── Power Automate webhook: receive calendar events ─────────────────
+// Flow sends: { events: [{ title, start, end, location, attendees, isAllDay }] }
+app.post("/webhook/outlook/calendar", (req, res) => {
+  if (!checkOlSecret(req, res)) return;
+  const events = Array.isArray(req.body) ? req.body : req.body.events || [req.body];
+  olData.calendar = events.map(ev => ({
+    id: ev.id || `cal-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+    title: ev.title || ev.subject || "(No title)",
+    start: ev.start || ev.startDateTime || ev.start?.dateTime || "",
+    end: ev.end || ev.endDateTime || ev.end?.dateTime || "",
+    location: ev.location || ev.location?.displayName || "",
+    attendees: ev.attendees || [],
+    isAllDay: ev.isAllDay || false,
+    source: "despatch",
+  }));
+  olData.configured = true;
+  saveOutlookData(olData);
+  console.log(`[Outlook webhook] Calendar: ${events.length} events received`);
+  res.json({ ok: true, count: events.length });
 });
 
-app.post("/api/outlook/reply", async (req, res) => {
-  if (!OL_USER() || !OL_PASS()) return res.status(400).json({ error: "Not configured" });
-  const { to, subject, body, inReplyTo } = req.body;
-  if (!to || !body) return res.status(400).json({ error: "Missing to or body" });
-  try {
-    const transport = nodemailer.createTransport({
-      host: OL_SMTP_HOST(), port: 587, secure: false,
-      auth: { user: OL_USER(), pass: OL_PASS() },
-    });
-    await transport.sendMail({
-      from: OL_USER(),
-      to,
-      subject: subject?.startsWith("Re:") ? subject : "Re: " + (subject || ""),
-      text: body,
-      inReplyTo: inReplyTo || undefined,
-    });
-    res.json({ ok: true });
-  } catch (e) {
-    console.error("[Outlook SMTP]", e.message);
-    res.status(500).json({ error: e.message });
-  }
+// GET calendar for a specific day (from stored data)
+app.get("/api/outlook/calendar", (req, res) => {
+  const now = new Date();
+  const dayOffset = parseInt(req.query.dayOffset || "0");
+  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+  const endOfDay = new Date(target); endOfDay.setDate(endOfDay.getDate() + 1);
+
+  const events = (olData.calendar || [])
+    .filter(ev => {
+      const start = ev.start ? new Date(ev.start) : null;
+      if (!start) return false;
+      return start >= target && start < endOfDay;
+    })
+    .map(ev => {
+      const start = new Date(ev.start);
+      return {
+        title: ev.title,
+        startStr: ev.isAllDay ? "All day" : start.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+        location: ev.location || "",
+        attendees: Array.isArray(ev.attendees) ? ev.attendees.slice(0, 5) : [],
+        hangoutLink: "",
+        source: "despatch",
+      };
+    })
+    .sort((a, b) => a.startStr.localeCompare(b.startStr));
+
+  res.json({ events });
 });
 
-app.delete("/api/outlook/email/:uid", async (req, res) => {
-  if (!OL_USER() || !OL_PASS()) return res.status(400).json({ error: "Not configured" });
-  let client;
-  try {
-    client = new ImapFlow({
-      host: OL_IMAP_HOST(), port: 993, secure: true,
-      auth: { user: OL_USER(), pass: OL_PASS() }, logger: false,
-    });
-    await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
-    try {
-      await client.messageDelete(req.params.uid, { uid: true });
-    } finally { lock.release(); }
-    await client.logout();
-    res.json({ ok: true });
-  } catch (e) {
-    console.error("[Outlook delete]", e.message);
-    if (client) try { await client.logout(); } catch {}
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Outlook calendar via ICS feed
-app.get("/api/outlook/calendar", async (req, res) => {
-  const icsUrl = process.env.OUTLOOK_ICS_URL;
-  if (!icsUrl) return res.status(400).json({ error: "Set OUTLOOK_ICS_URL in Railway env vars (Outlook → Settings → Shared calendars → Publish)." });
-  try {
-    const data = await ical.async.fromURL(icsUrl);
-    const now = new Date();
-    const dayOffset = parseInt(req.query.dayOffset || "0");
-    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+// GET calendar week summary (event counts per day from stored data)
+app.get("/api/outlook/calendar/week", (req, res) => {
+  const now = new Date();
+  const week = {};
+  for (let i = 0; i < 7; i++) {
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
     const endOfDay = new Date(target); endOfDay.setDate(endOfDay.getDate() + 1);
-
-    const events = Object.values(data)
-      .filter(ev => ev.type === "VEVENT")
-      .filter(ev => {
-        const start = ev.start ? new Date(ev.start) : null;
-        if (!start) return false;
-        return start >= target && start < endOfDay;
-      })
-      .filter(ev => !(ev.summary || "").toLowerCase().includes("ross in sheffield"))
-      .map(ev => {
-        const start = new Date(ev.start);
-        const allDay = !ev.start.getHours && !ev.start.getMinutes;
-        return {
-          title: ev.summary || "(No title)",
-          startStr: allDay ? "All day" : start.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-          location: ev.location || "",
-          attendees: (ev.attendee ? (Array.isArray(ev.attendee) ? ev.attendee : [ev.attendee]) : [])
-            .map(a => typeof a === "string" ? a.replace("mailto:", "") : (a.params?.CN || a.val?.replace("mailto:", "") || ""))
-            .slice(0, 5),
-          hangoutLink: ev.url || "",
-          source: "despatch",
-        };
-      })
-      .sort((a, b) => a.startStr.localeCompare(b.startStr));
-
-    res.json({ events });
-  } catch (e) {
-    console.error("[Outlook ICS]", e.message);
-    res.status(500).json({ error: e.message });
+    const key = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`;
+    week[key] = (olData.calendar || []).filter(ev => {
+      const start = ev.start ? new Date(ev.start) : null;
+      return start && start >= target && start < endOfDay;
+    }).length;
   }
-});
-
-// Outlook calendar week summary (event counts per day)
-app.get("/api/outlook/calendar/week", async (req, res) => {
-  const icsUrl = process.env.OUTLOOK_ICS_URL;
-  if (!icsUrl) return res.json({ week: {} });
-  try {
-    const data = await ical.async.fromURL(icsUrl);
-    const now = new Date();
-    const week = {};
-    for (let i = 0; i < 7; i++) {
-      const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-      const endOfDay = new Date(target); endOfDay.setDate(endOfDay.getDate() + 1);
-      const key = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`;
-      week[key] = Object.values(data)
-        .filter(ev => ev.type === "VEVENT")
-        .filter(ev => {
-          const start = ev.start ? new Date(ev.start) : null;
-          return start && start >= target && start < endOfDay;
-        })
-        .filter(ev => !(ev.summary || "").toLowerCase().includes("ross in sheffield"))
-        .length;
-    }
-    res.json({ week });
-  } catch (e) {
-    console.error("[Outlook ICS week]", e.message);
-    res.json({ week: {} });
-  }
+  res.json({ week });
 });
 
 // ── Claude API proxy ──────────────────────────────────────────────────

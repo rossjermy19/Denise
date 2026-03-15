@@ -902,7 +902,7 @@ function isOutlookConnected(){ return _outlookConnected; }
 async function connectOutlook(){
   const ok = await checkOutlookStatus();
   if(ok){ fetchOutlookEmails(); fetchOutlookCalendar(); fetchOutlookCalendarWeek(); }
-  else { alert('Outlook not configured on the backend.\n\nSet these Railway env vars:\n• OUTLOOK_USER = ross.jermy@thedespatchcompany.com\n• OUTLOOK_APP_PASSWORD = your app password\n• OUTLOOK_ICS_URL = your calendar ICS link\n\nFor the app password: go to account.microsoft.com → Security → App passwords.'); }
+  else { alert('Outlook is not connected yet.\n\nSet up Power Automate flows to push emails and calendar events to Denise.\n\nClick the 📧 button for setup instructions.'); }
 }
 
 async function fetchOutlookEmails(){
@@ -2002,9 +2002,9 @@ function bindEvents(){
   const bos=document.getElementById('btnOutlookSettings');if(bos)bos.addEventListener('click',async()=>{
     const connected=isOutlookConnected();
     if(connected){
-      alert('Outlook is connected via IMAP/ICS (ross.jermy@thedespatchcompany.com).\n\nTo change settings, update these Railway env vars:\n• OUTLOOK_USER\n• OUTLOOK_APP_PASSWORD\n• OUTLOOK_ICS_URL');
+      alert('Outlook is connected via Power Automate (ross.jermy@thedespatchcompany.com).\n\nEmails and calendar events are being pushed automatically.\n\nTo change settings, edit your Power Automate flows at flow.microsoft.com');
     } else {
-      alert('Outlook is not configured on the backend.\n\nSet these Railway env vars:\n• OUTLOOK_USER = ross.jermy@thedespatchcompany.com\n• OUTLOOK_APP_PASSWORD = your app password\n• OUTLOOK_IMAP_HOST = outlook.office365.com (default)\n• OUTLOOK_SMTP_HOST = smtp.office365.com (default)\n• OUTLOOK_ICS_URL = your calendar ICS link\n\nFor the app password:\n1. Go to account.microsoft.com → Security\n2. Click "App passwords"\n3. Generate a new app password\n\nAfter setting env vars, redeploy and click Refresh all.');
+      alert('Outlook is not connected yet.\n\nYou need 2 Power Automate flows:\n\n1. EMAIL FLOW — "When a new email arrives" → Send HTTP POST to:\n   ' + API() + '/webhook/outlook/email\n\n2. CALENDAR FLOW — Recurrence (every 30 min) → "Get events" → Send HTTP POST to:\n   ' + API() + '/webhook/outlook/calendar\n\nSee instructions from Denise for full setup details.');
     }
   });
   const bvs=document.getElementById('btnVoiceSettings');if(bvs)bvs.addEventListener('click',()=>{
