@@ -232,15 +232,39 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ── Chat ── */
-.chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 90px)}
-.msgs{flex:1;overflow-y:auto;padding:8px 0;display:flex;flex-direction:column;gap:10px}
-.msg{max-width:82%;padding:11px 15px;border-radius:var(--radius);font-size:14px;line-height:1.65}
-.msg.ai{background:var(--surface);border:1px solid var(--border);align-self:flex-start;color:var(--text)}
-.msg.user{background:var(--accent);color:white;align-self:flex-end;font-weight:500}
-.chat-input-row{display:flex;gap:10px;padding-top:12px;border-top:1px solid var(--border);margin-top:10px}
-.chat-inp{flex:1;padding:9px 14px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:14px;font-family:var(--body);outline:none;transition:border-color .15s}
-.chat-inp:focus{border-color:var(--accent)}
-.chat-send{padding:9px 20px;border-radius:var(--radius);border:none;background:var(--accent);color:white;font-size:14px;font-family:var(--fb);font-weight:600;cursor:pointer}
+.chat-container{display:flex;flex-direction:column;height:calc(100vh - 90px);max-width:720px;margin:0 auto;width:100%}
+.chat-header{display:flex;align-items:center;gap:16px;padding:20px 0 16px;border-bottom:1px solid var(--border-light);margin-bottom:0;flex-shrink:0}
+.chat-avatar{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#7C3AED,#a78bfa);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(124,58,237,0.25)}
+.chat-avatar svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,0.1))}
+.chat-hdr-info{flex:1}
+.chat-hdr-name{font-family:var(--fb);font-size:17px;font-weight:700;color:var(--text)}
+.chat-hdr-sub{font-size:12px;color:var(--muted);margin-top:2px;font-family:var(--fd)}
+.chat-hdr-status{display:flex;align-items:center;gap:5px}
+.chat-hdr-dot{width:8px;height:8px;border-radius:50%;background:var(--success);animation:pulse 2s infinite}
+.chat-hdr-mic{display:flex;align-items:center;gap:6px}
+.msgs{flex:1;overflow-y:auto;padding:20px 0;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth}
+.msg{display:flex;gap:10px;max-width:88%;animation:msgIn .25s ease-out}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.msg.ai{align-self:flex-start}
+.msg.user{align-self:flex-end;flex-direction:row-reverse}
+.msg-avi{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+.msg.ai .msg-avi{background:linear-gradient(135deg,#7C3AED,#a78bfa)}
+.msg.user .msg-avi{background:var(--accent);color:white;font-size:11px;font-weight:700;font-family:var(--fb)}
+.mbub{padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.mbub.ai{background:var(--surface);border:1px solid var(--border);color:var(--text);border-bottom-left-radius:4px}
+.mbub.user{background:var(--accent);color:white;font-weight:500;border-bottom-right-radius:4px}
+.thk{display:flex;align-items:center;gap:8px;color:var(--muted);font-style:italic;font-size:13px}
+.thk::before{content:'';width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--purple);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+.chat-prompts{display:flex;flex-wrap:wrap;gap:8px;padding:16px 0;flex-shrink:0}
+.chat-prompt-btn{padding:8px 16px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:12px;font-family:var(--body);cursor:pointer;transition:all .2s;line-height:1.4}
+.chat-prompt-btn:hover{border-color:var(--purple);color:var(--purple);background:var(--purple-dim);transform:translateY(-1px);box-shadow:0 2px 8px rgba(124,58,237,0.1)}
+.chat-input-area{display:flex;align-items:center;gap:10px;padding:14px 0;border-top:1px solid var(--border-light);flex-shrink:0;background:var(--bg)}
+.chat-inp{flex:1;padding:12px 18px;border-radius:24px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:14px;font-family:var(--body);outline:none;transition:all .2s;box-shadow:var(--shadow)}
+.chat-inp:focus{border-color:var(--purple);box-shadow:0 0 0 3px rgba(124,58,237,0.1)}
+.chat-inp::placeholder{color:var(--muted)}
+.chat-send{width:42px;height:42px;border-radius:50%;border:none;background:var(--purple);color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0;box-shadow:0 2px 8px rgba(124,58,237,0.3)}
+.chat-send:hover{background:#6d28d9;transform:scale(1.05)}
+.chat-send:active{transform:scale(0.95)}
 .qprompts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
 .qpill{padding:6px 13px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:12px;font-family:var(--body);cursor:pointer;transition:all .15s}
 .qpill:hover{border-color:var(--accent);color:var(--accent)}
@@ -352,10 +376,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
   .ebtn{padding:6px 10px;font-size:11px}
 
   /* Chat */
-  .chat-wrap{height:calc(100vh - 140px)}
-  .msg{max-width:92%;padding:9px 12px;font-size:13px}
-  .chat-inp{font-size:13px;padding:8px 10px}
-  .chat-send{padding:8px 14px;font-size:13px}
+  .chat-container{height:calc(100vh - 140px)}
+  .chat-header{padding:14px 0 12px}
+  .chat-avatar{width:40px;height:40px}
+  .chat-hdr-name{font-size:15px}
+  .msg{max-width:94%}
+  .msg-avi{width:24px;height:24px}
+  .mbub{padding:10px 14px;font-size:13px;border-radius:14px}
+  .chat-inp{font-size:13px;padding:10px 14px}
+  .chat-send{width:38px;height:38px}
+  .chat-prompt-btn{font-size:11px;padding:6px 12px}
   .qpill{font-size:11px;padding:5px 10px}
 
   /* Calendar nav */
@@ -472,7 +502,6 @@ const S={
   emails:[],emailsLoading:false,selectedEmail:null,selectedEmailIdx:-1,
   emailAlerts:[],alertsLoading:false,alertsGenerated:false,
   composingReply:null,replyDraft:'',sendSuccess:null,
-  cuTasks:[],cuLoading:false,cuCompleted:{},
   calEvents:[],calLoading:false,calDayOffset:0,calError:null,
   calWeek:{},calWeekLoading:false,calPopupDay:null,calPopupEvents:[],calPopupLoading:false,
   weather:null,weatherLoading:false,
@@ -1279,24 +1308,6 @@ async function sendReply(email){
   }
 }
 
-async function fetchClickUp(){
-  S.cuLoading=true;render();
-  try{
-    const res=await fetch(`https://api.clickup.com/api/v2/team/${CLICKUP_TEAM}/task?assignees[]=${CLICKUP_USER}&include_closed=false&subtasks=true&page=0&order_by=due_date`,{headers:{Authorization:CLICKUP_TOKEN}});
-    const d=await res.json();
-    S.cuTasks=(d.tasks||[]).slice(0,60);
-  }catch(e){console.error('ClickUp:',e);S.cuTasks=[];}
-  S.cuLoading=false;render();
-}
-
-async function completeClickUpTask(taskId,taskName){
-  if(!confirm(`Mark "${taskName}" as complete in ClickUp?`))return;
-  S.cuCompleted[taskId]=true;render();
-  try{
-    await fetch(`https://api.clickup.com/api/v2/task/${taskId}`,{method:'PUT',headers:{Authorization:CLICKUP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({status:'complete'})});
-    setTimeout(()=>{S.cuTasks=S.cuTasks.filter(t=>t.id!==taskId);render();},500);
-  }catch(e){delete S.cuCompleted[taskId];render();}
-}
 
 async function fetchData(){
   try{const res=await fetch(`${API()}/api/data`);const d=await res.json();S.tasks=d.tasks||[];S.calls=d.calls||[];S.stats=d.stats||{};render();}catch{}
@@ -1386,8 +1397,7 @@ async function sendChat(msg){
   const tCtx=S.tasks.slice(0,10).map(t=>`- [${t.status}] ${t.text} (due:${t.due})`).join('\n');
   const rCtx=S.calls.slice(0,5).map(c=>`- "${c.title}": ${c.bulletPoints?.join(';')||'no summary'}`).join('\n');
   const eCtx=S.emails.slice(0,8).map(e=>`- From ${e.from_name||e.from_email}: "${e.subject}" — ${e.snippet?.slice(0,80)}`).join('\n');
-  const cCtx=S.cuTasks.slice(0,8).map(t=>`- [${t.status?.status}] ${t.name} (${t.priority?.priority||'normal'})`).join('\n');
-  const sys=`You are Denise, sharp friendly PA for Ross at Nino Logistics/Moov Parcel UK. Concise, warm, practical. Max 150 words unless drafting.\n\nPocket tasks:\n${tCtx||'None'}\nRecordings:\n${rCtx||'None'}\nGmail:\n${eCtx||'Not loaded'}\nClickUp:\n${cCtx||'Not loaded'}`;
+  const sys=`You are Denise, sharp friendly PA for Ross at Nino Logistics/Moov Parcel UK. Concise, warm, practical. Max 150 words unless drafting.\n\nPocket tasks:\n${tCtx||'None'}\nRecordings:\n${rCtx||'None'}\nGmail:\n${eCtx||'Not loaded'}`;
   try{const r=await callClaude(sys,msg);S.messages.push({role:'ai',text:r});}
   catch{S.messages.push({role:'ai',text:'Could not reach API.'});}
   S.chatLoading=false;render();scrollChat();
@@ -1470,7 +1480,7 @@ function renderDash(){
     </div>
   </div>
   <div class="body${S.tab!=='dashboard'?' full':''}">
-    ${S.tab==='dashboard'?renderDashTab(overdue,unread):S.tab==='gmail'?renderGmailTab():S.tab==='clickup'?renderClickUpTab():S.tab==='pocket'?renderPocketTab(overdue):renderPATab()}
+    ${S.tab==='dashboard'?renderDashTab(overdue,unread):S.tab==='gmail'?renderGmailTab():S.tab==='pocket'?renderPocketTab(overdue):renderPATab()}
   </div></div>`;
 }
 
@@ -1736,27 +1746,6 @@ function renderGmailTab(){
   </div>`;
 }
 
-function renderClickUpTab(){
-  const hi=S.cuTasks.filter(t=>t.priority?.priority==='urgent'||t.priority?.priority==='high');
-  const lo=S.cuTasks.filter(t=>t.priority?.priority!=='urgent'&&t.priority?.priority!=='high');
-  return `<div>
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-    <div><div style="font-size:18px;font-weight:600">ClickUp Inbox</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Tasks assigned to you · ${S.cuTasks.length} total</div></div>
-    <button style="padding:9px 18px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);color:var(--accent);font-size:12px;font-family:var(--fd);cursor:pointer;box-shadow:var(--shadow)" id="btnRefreshCU">↻ Refresh</button>
-  </div>
-  ${S.cuLoading?`<div class="card"><div class="ldr"><div class="spinner"></div>Loading your ClickUp tasks...</div></div>`:S.cuTasks.length===0?`<div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--muted);margin-bottom:16px">No tasks loaded yet.</div><button style="padding:10px 20px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadCU2">Load my ClickUp tasks</button></div>`:
-  `<div class="briefing-grid">
-    <div class="card"><div class="chdr"><span class="ctitle">High priority</span><span class="bdg bd">${hi.length}</span></div>
-    ${hi.length===0?'<div style="font-size:13px;color:var(--muted)">No urgent tasks — nice!</div>':''}
-    ${hi.map(t=>`<div class="curow"><div class="cuchk ${S.cuCompleted[t.id]?'done':''}" data-cu="${esc(t.id)}" data-cuname="${esc(t.name)}">${S.cuCompleted[t.id]?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><div class="cuinfo"><div class="cuname">${esc(t.name)}</div><div class="cumeta">${esc(t.list?.name||'')}${t.due_date?` · Due ${new Date(parseInt(t.due_date)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:''}</div></div><span class="custa">${esc(t.status?.status||'open')}</span></div>`).join('')}
-    </div>
-    <div class="card"><div class="chdr"><span class="ctitle">Normal &amp; low</span><span class="bdg ba">${lo.length}</span></div>
-    ${lo.length===0?'<div style="font-size:13px;color:var(--muted)">No tasks.</div>':''}
-    ${lo.map(t=>`<div class="curow"><div class="cuchk ${S.cuCompleted[t.id]?'done':''}" data-cu="${esc(t.id)}" data-cuname="${esc(t.name)}">${S.cuCompleted[t.id]?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><div class="cuinfo"><div class="cuname">${esc(t.name)}</div><div class="cumeta">${esc(t.list?.name||'')}${t.due_date?` · Due ${new Date(parseInt(t.due_date)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:''}</div></div><span class="custa">${esc(t.status?.status||'open')}</span></div>`).join('')}
-    </div>
-  </div>`}
-  </div>`;
-}
 
 function renderPocketTab(overdue){
   return `<div class="g2">
@@ -1792,22 +1781,43 @@ function renderPocketTab(overdue){
 }
 
 function renderPATab(){
-  return `<div class="cwrap">
-  <div class="dhdr"><div class="dav"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div><div><div class="dname">Denise</div><div class="dsub">Pocket · Gmail · ClickUp · ${S.tasks.length} tasks · ${S.emails.length} emails · ${S.cuTasks.length} ClickUp tasks</div></div></div>
-  <div class="ccard">
-    <div class="qprompts">${['What needs my attention today?','Summarise my unread emails','Which ClickUp tasks are overdue?','Draft a reply to my most urgent email','What action items came from my last recording?'].map(q=>`<button class="qbtn" data-quick="${esc(q)}">${esc(q)}</button>`).join('')}</div>
-    <div class="msgs" id="messages">
-      ${S.messages.map(m=>`<div class="msg ${m.role}">${m.role==='ai'?`<div class="mico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>`:''}<div class="mbub ${m.role}">${esc(m.text)}</div></div>`).join('')}
-      ${S.chatLoading?`<div class="msg ai"><div class="mico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div><div class="mbub ai"><span class="thk">Denise is thinking...</span></div></div>`:''}
+  const prompts=['What needs my attention today?','Summarise my unread emails','Draft a reply to my most urgent email','What action items came from my last recording?','What\'s in my diary this week?'];
+  const hasMessages = S.messages.length > 1 || S.chatLoading;
+  return `<div class="chat-container">
+  <div class="chat-header">
+    <div class="chat-avatar"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
+    <div class="chat-hdr-info">
+      <div class="chat-hdr-name">Chat with Denise</div>
+      <div class="chat-hdr-sub">${S.tasks.length} tasks · ${S.emails.length} emails · your PA is ready</div>
     </div>
-    <div class="cinrow"><input class="cinp" id="chatInput" placeholder="Ask Denise anything..." /><button class="sbtn" id="btnSend">Send</button></div>
+    <div class="chat-hdr-mic">
+      <button class="mic-btn small" id="btnAskDeniseChat" title="Ask by voice"${S.voiceListening?' style="display:none"':''}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0014 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+      </button>
+      <div class="chat-hdr-status"><div class="chat-hdr-dot"></div><span style="font-size:11px;color:var(--muted);font-family:var(--fd)">Online</span></div>
+    </div>
+  </div>
+  ${!hasMessages?`<div class="chat-prompts">${prompts.map(q=>`<button class="chat-prompt-btn" data-quick="${esc(q)}">${esc(q)}</button>`).join('')}</div>`:''}
+  <div class="msgs" id="messages">
+    ${S.messages.map(m=>`<div class="msg ${m.role}">
+      <div class="msg-avi">${m.role==='ai'?`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>`:'R'}</div>
+      <div class="mbub ${m.role}">${esc(m.text)}</div>
+    </div>`).join('')}
+    ${S.chatLoading?`<div class="msg ai"><div class="msg-avi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div><div class="mbub ai"><span class="thk">Denise is thinking...</span></div></div>`:''}
+  </div>
+  ${hasMessages?`<div class="chat-prompts">${prompts.map(q=>`<button class="chat-prompt-btn" data-quick="${esc(q)}">${esc(q)}</button>`).join('')}</div>`:''}
+  <div class="chat-input-area">
+    <input class="chat-inp" id="chatInput" placeholder="Ask Denise anything..." />
+    <button class="chat-send" id="btnSend" title="Send">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/></svg>
+    </button>
   </div>
   </div>`;
 }
 
 function bindEvents(){
   // Nav
-  document.querySelectorAll('[data-tab]').forEach(btn=>{btn.addEventListener('click',()=>{S.tab=btn.dataset.tab;render();if(S.tab==='gmail'&&S.emails.length===0&&!S.emailsLoading)fetchEmails();if(S.tab==='clickup'&&S.cuTasks.length===0&&!S.cuLoading)fetchClickUp();});});
+  document.querySelectorAll('[data-tab]').forEach(btn=>{btn.addEventListener('click',()=>{S.tab=btn.dataset.tab;render();if(S.tab==='gmail'&&S.emails.length===0&&!S.emailsLoading)fetchEmails();});});
   // Wizard
   const ui=document.getElementById('backendUrl');if(ui)ui.addEventListener('input',e=>S.backendUrl=e.target.value);
   const bcb=document.getElementById('btnCheckBackend');if(bcb)bcb.addEventListener('click',()=>{S.backendUrl=document.getElementById('backendUrl')?.value||S.backendUrl;wizCheckBackend();});
@@ -1818,7 +1828,7 @@ function bindEvents(){
   // Header
   const bsy=document.getElementById('btnSync');if(bsy)bsy.addEventListener('click',syncPocket);
   const bfs=document.getElementById('btnForceSync');if(bfs)bfs.addEventListener('click',forceSyncPocket);
-  const brs=document.getElementById('btnReset');if(brs)brs.addEventListener('click',()=>{if(confirm('Reset Denise?')){localStorage.removeItem('pa_setup_done');localStorage.removeItem('pa_api_base');S.wizStep=1;S.apiKey='';S.keyResult=null;S.tasks=[];S.calls=[];S.emails=[];S.cuTasks=[];render();}});
+  const brs=document.getElementById('btnReset');if(brs)brs.addEventListener('click',()=>{if(confirm('Reset Denise?')){localStorage.removeItem('pa_setup_done');localStorage.removeItem('pa_api_base');S.wizStep=1;S.apiKey='';S.keyResult=null;S.tasks=[];S.calls=[];S.emails=[];render();}});
   const bvs=document.getElementById('btnVoiceSettings');if(bvs)bvs.addEventListener('click',()=>{
     const current=localStorage.getItem('pa_elevenlabs_key')||'';
     const key=prompt('ElevenLabs API key for natural voice (leave blank for browser voice):',current);
@@ -1860,15 +1870,11 @@ function bindEvents(){
   const bcop=document.getElementById('btnCopyReply');if(bcop)bcop.addEventListener('click',()=>{const a=document.getElementById('replyArea');navigator.clipboard.writeText(a?.value||S.replyDraft);bcop.textContent='Copied!';setTimeout(()=>bcop.textContent='Copy to clipboard',2000);});
   // Voice
   const bad=document.getElementById('btnAskDenise');if(bad)bad.addEventListener('click',()=>startListening('ask'));
+  const badc=document.getElementById('btnAskDeniseChat');if(badc)badc.addEventListener('click',()=>startListening('ask'));
   const bvr=document.getElementById('btnVoiceReply');if(bvr)bvr.addEventListener('click',()=>startListening('reply'));
   const bvrd=document.getElementById('btnVoiceRedraft');if(bvrd)bvrd.addEventListener('click',()=>startListening('reply'));
   const bsv=document.getElementById('btnStopVoice');if(bsv)bsv.addEventListener('click',()=>stopListening());
   const bss=document.getElementById('btnStopSpeak');if(bss)bss.addEventListener('click',()=>{speechSynthesis.cancel();S.voiceSpeaking=false;render();});
-  // ClickUp
-  const brc=document.getElementById('btnRefreshCU');if(brc)brc.addEventListener('click',fetchClickUp);
-  const blc=document.getElementById('btnLoadCU');if(blc)blc.addEventListener('click',fetchClickUp);
-  const blc2=document.getElementById('btnLoadCU2');if(blc2)blc2.addEventListener('click',fetchClickUp);
-  document.querySelectorAll('[data-cu]').forEach(b=>{b.addEventListener('click',e=>{e.stopPropagation();completeClickUpTask(b.dataset.cu,b.dataset.cuname);});});
   // Chat
   const ci=document.getElementById('chatInput');if(ci)ci.addEventListener('keydown',e=>{if(e.key==='Enter'){sendChat(ci.value);ci.value='';}});
   const bs=document.getElementById('btnSend');if(bs)bs.addEventListener('click',()=>{const i=document.getElementById('chatInput');if(i){sendChat(i.value);i.value='';}});
