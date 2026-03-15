@@ -406,11 +406,8 @@ async function fetchEmails(){
         const labelsData = await labelsRes.json();
         const allLabels = labelsData.labels || [];
         console.log('[Denise] Gmail labels found:', allLabels.map(l=>l.name).join(', '));
-        // Match "Moov" as exact name or as sub-label path (e.g. "Work/Moov")
-        const moovLabel = allLabels.find(l => {
-          const name = l.name.toLowerCase();
-          return name === 'moov' || name.endsWith('/moov') || name.startsWith('moov/');
-        });
+        // Match anything containing "moov" — handles sub-labels like "Inbox/Moov", "Moov Parcel", etc.
+        const moovLabel = allLabels.find(l => l.name.toLowerCase().includes('moov'));
         if(moovLabel){
           window._moovLabelId = moovLabel.id;
           console.log('[Denise] Using Moov label:', moovLabel.name, '→', moovLabel.id);
@@ -874,7 +871,9 @@ function renderDashTab(overdue,unread){
       </div>
     </div>
     ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Scanning your inbox...</div>`:
-      S.emails.length===0?`
+      S.emailsError?`
+        <div style="padding:14px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:8px">Gmail error: ${esc(S.emailsError)}</div><button style="padding:8px 18px;border-radius:var(--r);border:none;background:var(--accent);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnLoadEmail">Try again</button></div>
+      `:S.emails.length===0?`
         <div style="font-size:13px;color:var(--muted);padding:4px 0">Load your Gmail inbox — Denise will flag emails needing a reply.</div>
         <button style="margin-top:10px;padding:8px 18px;border-radius:var(--r);border:none;background:var(--accent);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnLoadEmail">Load Gmail</button>
       `:needsReply.length===0?`
@@ -952,7 +951,7 @@ function renderGmailTab(){
         <button style="padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--accent);font-size:11px;font-family:var(--fd);cursor:pointer" id="btnRefreshEmail">↻</button>
       </div>
     </div>
-    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading your inbox...</div>`:S.emails.length===0?`<div style="font-size:13px;color:var(--muted);padding:16px 18px">No emails loaded.<br><br><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Load Gmail inbox</button></div>`:
+    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading your inbox...</div>`:S.emailsError?`<div style="padding:16px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:8px">Failed to load Gmail: ${esc(S.emailsError)}</div><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Try again</button></div>`:S.emails.length===0?`<div style="font-size:13px;color:var(--muted);padding:16px 18px">No emails loaded.<br><br><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Load Gmail inbox</button></div>`:
     S.emails.map((e,i)=>{
       const isSelected=sel&&S.selectedEmailIdx===i;
       const needsAction=e.needsReply;
