@@ -61,6 +61,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 /* ── Stats ── */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
 .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow)}
+.stats-5{grid-template-columns:repeat(5,1fr)}
 .slbl{font-family:var(--fd);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
 .sval{font-family:var(--fb);font-size:36px;font-weight:700;line-height:1;letter-spacing:-0.02em}
 
@@ -163,6 +164,24 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .comp-status{font-size:11px;font-family:var(--fd);color:var(--muted);margin-left:auto}
 .sel{background:var(--accent-dim) !important}
 
+/* ── Dashboard briefing grid ── */
+.briefing-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:640px){.briefing-grid{grid-template-columns:1fr}}
+
+/* ── Gmail layout ── */
+.gmail-layout{display:grid;grid-template-columns:1fr;gap:10px;align-items:start}
+.gmail-layout.has-detail{grid-template-columns:320px 1fr}
+.gmail-list{max-height:calc(100vh - 90px);overflow-y:auto}
+.gmail-detail-wrap{display:flex;flex-direction:column;gap:0;height:calc(100vh - 90px)}
+.gmail-back{display:none;padding:8px 14px;font-size:13px;font-family:var(--fb);font-weight:500;color:var(--accent);background:transparent;border:none;border-bottom:1px solid var(--border-light);cursor:pointer;text-align:left}
+
+@media(max-width:640px){
+  .gmail-layout.has-detail{grid-template-columns:1fr}
+  .gmail-layout.has-detail .gmail-list{display:none}
+  .gmail-detail-wrap{height:auto;min-height:calc(100vh - 140px)}
+  .gmail-back{display:block}
+}
+
 /* ── Loading ── */
 .ldr{display:flex;align-items:center;gap:10px;padding:14px 18px;color:var(--muted);font-size:13px}
 .spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
@@ -229,6 +248,95 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .call-row:hover .delete-call-btn,.erow:hover .delete-call-btn{opacity:1}
 .g3{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:860px){.g3{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ── Mobile responsive ── */
+@media(max-width:640px){
+  /* Header: stack vertically */
+  .header{flex-wrap:wrap;height:auto;padding:10px 14px;gap:8px}
+  .header>div:first-child{width:100%;display:flex;align-items:center;justify-content:space-between}
+  .nav{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-shrink:0;scrollbar-width:none}
+  .nav::-webkit-scrollbar{display:none}
+  .nav-btn{padding:6px 12px;font-size:11px;flex-shrink:0}
+  .hdr-right{width:100%;justify-content:flex-end;flex-wrap:wrap;gap:6px}
+  .hbtn{padding:5px 10px;font-size:11px}
+  .rbtn{padding:4px 8px;font-size:10px}
+  .live{font-size:10px}
+
+  /* Body */
+  .body{padding:12px}
+  .body.full{padding:8px 10px}
+
+  /* Stats: 2 cols on small */
+  .stats,.stats-5{grid-template-columns:repeat(2,1fr) !important;gap:8px;margin-bottom:14px}
+  .stat{padding:12px 14px}
+  .sval{font-size:26px}
+  .slbl{font-size:9px}
+
+  /* Dashboard briefing grid: stack */
+  .body>[style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr !important}
+
+  /* Cards */
+  .card{border-radius:var(--radius);margin-bottom:10px}
+  .chdr{padding:10px 14px 8px}
+  .ctitle{font-size:10px}
+
+  /* Email rows */
+  .erow{padding:8px 12px;gap:8px}
+  .esender{font-size:12px}
+  .esubj{font-size:12px}
+  .etime{font-size:10px}
+  .edot{width:6px;height:6px}
+
+  /* Priority emails */
+  .priority-email-body{padding:10px 12px}
+  .priority-from{font-size:13px}
+  .priority-subject{font-size:12px}
+  .priority-snippet{font-size:11px}
+  .priority-time{padding:10px 12px 0 0;font-size:10px}
+  .priority-label{font-size:9px}
+
+  /* Email detail */
+  .edetail{padding:14px;margin-top:10px}
+  .esubject{font-size:15px}
+  .ebody{max-height:180px;font-size:12px;padding:10px}
+
+  /* Compose */
+  .compa{min-height:140px;font-size:13px;padding:12px}
+  .compftr{flex-wrap:wrap;gap:6px}
+
+  /* Buttons */
+  .ebtn{padding:6px 10px;font-size:11px}
+
+  /* Chat */
+  .chat-wrap{height:calc(100vh - 140px)}
+  .msg{max-width:92%;padding:9px 12px;font-size:13px}
+  .chat-inp{font-size:13px;padding:8px 10px}
+  .chat-send{padding:8px 14px;font-size:13px}
+  .qpill{font-size:11px;padding:5px 10px}
+
+  /* Calendar nav */
+  .cal-nav{width:24px !important;height:24px !important;font-size:12px !important}
+
+  /* Detail panel */
+  .det{padding:14px}
+  .det-title{font-size:15px}
+  .transcript-box{font-size:11px;max-height:160px}
+
+  /* Setup wizard */
+  .wizard,.wiz{padding:24px;border-radius:14px}
+  .wiz-brand,.wtitle{font-size:18px}
+}
+
+/* Very small screens (iPhone SE etc) */
+@media(max-width:380px){
+  .stats{grid-template-columns:1fr 1fr !important}
+  .stat{padding:10px 12px}
+  .sval{font-size:22px}
+  .header{padding:8px 10px}
+  .body{padding:8px}
+  .body.full{padding:6px 8px}
+  .nav-btn{padding:5px 10px;font-size:10px}
+}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
@@ -1025,7 +1133,7 @@ function renderDashTab(overdue,unread){
 
   return `
   <!-- 5 stat tiles -->
-  <div class="stats" style="grid-template-columns:repeat(5,1fr)">
+  <div class="stats stats-5">
     <div class="stat"><div class="slbl">${S.calDayOffset===0?'Meetings today':S.calDayOffset===1?'Meetings tomorrow':'Meetings'}</div><div class="sval" style="color:var(--accent)">${S.calEvents.length}</div></div>
     <div class="stat"><div class="slbl">Emails to action</div><div class="sval" style="color:${needsReply.length>0?'var(--danger)':'var(--teal)'}">${needsReply.length}</div></div>
     <div class="stat"><div class="slbl">Pocket tasks</div><div class="sval" style="color:var(--accent)">${S.stats.open||0}</div></div>
@@ -1034,7 +1142,7 @@ function renderDashTab(overdue,unread){
   </div>
 
   <!-- Morning briefing: weather + diary -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+  <div class="briefing-grid">
     <!-- Weather -->
     <div class="card">
       <div class="chdr"><span class="ctitle">UK Weather</span></div>
@@ -1167,9 +1275,9 @@ function renderGmailTab(){
   const actionable=S.emails.filter(e=>e.needsReply);
   const unreadCount=S.emails.filter(e=>e.is_unread).length;
 
-  return `<div style="display:grid;grid-template-columns:${sel?'320px 1fr':'1fr'};gap:10px;align-items:start">
+  return `<div class="gmail-layout${sel?' has-detail':''}">
   <!-- Email list -->
-  <div class="card" style="max-height:calc(100vh - 90px);overflow-y:auto">
+  <div class="card gmail-list">
     <div class="chdr">
       <span class="ctitle">Inbox</span>
       <div style="display:flex;gap:8px;align-items:center">
@@ -1193,7 +1301,8 @@ function renderGmailTab(){
     }).join('')}
   </div>
 
-  ${sel?`<div style="display:flex;flex-direction:column;gap:0;height:calc(100vh - 90px)">
+  ${sel?`<div class="gmail-detail-wrap">
+    <button class="gmail-back" id="btnBackToList">← Back to inbox</button>
     <!-- Email detail — shrinks when composing -->
     <div class="edetail" style="flex:${composing?'0 1 auto':'1 1 auto'};overflow-y:auto;${composing?'max-height:40%':''}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
@@ -1245,7 +1354,7 @@ function renderClickUpTab(){
     <button style="padding:9px 18px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);color:var(--accent);font-size:12px;font-family:var(--fd);cursor:pointer;box-shadow:var(--shadow)" id="btnRefreshCU">↻ Refresh</button>
   </div>
   ${S.cuLoading?`<div class="card"><div class="ldr"><div class="spinner"></div>Loading your ClickUp tasks...</div></div>`:S.cuTasks.length===0?`<div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--muted);margin-bottom:16px">No tasks loaded yet.</div><button style="padding:10px 20px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadCU2">Load my ClickUp tasks</button></div>`:
-  `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+  `<div class="briefing-grid">
     <div class="card"><div class="chdr"><span class="ctitle">High priority</span><span class="bdg bd">${hi.length}</span></div>
     ${hi.length===0?'<div style="font-size:13px;color:var(--muted)">No urgent tasks — nice!</div>':''}
     ${hi.map(t=>`<div class="curow"><div class="cuchk ${S.cuCompleted[t.id]?'done':''}" data-cu="${esc(t.id)}" data-cuname="${esc(t.name)}">${S.cuCompleted[t.id]?`<svg width="9" height="7" viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:''}</div><div class="cuinfo"><div class="cuname">${esc(t.name)}</div><div class="cumeta">${esc(t.list?.name||'')}${t.due_date?` · Due ${new Date(parseInt(t.due_date)).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`:''}</div></div><span class="custa">${esc(t.status?.status||'open')}</span></div>`).join('')}
@@ -1344,6 +1453,7 @@ function bindEvents(){
   const bsr=document.getElementById('btnSendReply');if(bsr)bsr.addEventListener('click',()=>sendReply(S.selectedEmail));
   const bte=document.getElementById('btnTrashEmail');if(bte)bte.addEventListener('click',()=>trashEmail(S.selectedEmail));
   const bce=document.getElementById('btnCloseEmail');if(bce)bce.addEventListener('click',()=>{S.selectedEmail=null;S.composingReply=null;render();});
+  const bbl=document.getElementById('btnBackToList');if(bbl)bbl.addEventListener('click',()=>{S.selectedEmail=null;S.composingReply=null;render();});
   const bcr=document.getElementById('btnCancelReply');if(bcr)bcr.addEventListener('click',()=>{S.composingReply=null;render();});
   const bcop=document.getElementById('btnCopyReply');if(bcop)bcop.addEventListener('click',()=>{const a=document.getElementById('replyArea');navigator.clipboard.writeText(a?.value||S.replyDraft);bcop.textContent='Copied!';setTimeout(()=>bcop.textContent='Copy to clipboard',2000);});
   // ClickUp
