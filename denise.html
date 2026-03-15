@@ -140,7 +140,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .edetail{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin-top:14px;box-shadow:var(--shadow)}
 .esubject{font-family:var(--fb);font-size:17px;font-weight:700;margin-bottom:5px}
 .emeta{font-family:var(--fd);font-size:11px;color:var(--muted);margin-bottom:14px}
-.ebody{font-size:13px;line-height:1.8;color:var(--text2);white-space:pre-wrap;word-break:break-word;max-height:400px;overflow-y:auto}
+.ebody{font-size:13px;line-height:1.8;color:var(--text2);white-space:pre-wrap;word-break:break-word;max-height:250px;overflow-y:auto;border:1px solid var(--border-light);border-radius:var(--r);padding:12px;background:var(--bg)}
 .eactions{display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-light)}
 .eact-btn{padding:7px 14px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:12px;font-family:var(--fb);font-weight:500;cursor:pointer;transition:all .15s}
 .eact-btn:hover{border-color:var(--accent);color:var(--accent)}
@@ -318,7 +318,7 @@ const S={
   tasks:[],calls:[],stats:{open:0,done:0,overdue:0,totalCalls:0},selectedCall:null,newTask:'',
   emails:[],emailsLoading:false,selectedEmail:null,selectedEmailIdx:-1,
   emailAlerts:[],alertsLoading:false,alertsGenerated:false,
-  composingReply:null,replyDraft:'',
+  composingReply:null,replyDraft:'',sendSuccess:null,
   cuTasks:[],cuLoading:false,cuCompleted:{},
   messages:[{role:'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket and Gmail. Ask me what needs your attention today, or anything else."}],
   chatLoading:false,
@@ -366,7 +366,7 @@ async function fetchEmails(){
       if(!window.google || !window.google.accounts){ reject(new Error('Google sign-in loading, try again in a moment')); return; }
       const client = google.accounts.oauth2.initTokenClient({
         client_id: '597561744602-3pmav3dbg17itvh5d7kgr1ddil9ii548.apps.googleusercontent.com',
-        scope: 'https://www.googleapis.com/auth/gmail.readonly',
+        scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
         callback: (resp) => {
           if(resp.error){ reject(new Error(resp.error)); return; }
           window._gTok = resp.access_token;
@@ -380,8 +380,19 @@ async function fetchEmails(){
       client.requestAccessToken();
     });
 
-    // Fetch message list
-    const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20', {
+    // Find the Moov label ID (cache it)
+    if(!window._moovLabelId){
+      const labelsRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      const labelsData = await labelsRes.json();
+      const moovLabel = (labelsData.labels||[]).find(l => l.name.toLowerCase()==='moov' || l.name.toLowerCase().includes('moov'));
+      if(moovLabel) window._moovLabelId = moovLabel.id;
+    }
+
+    // Fetch message list — filtered to Moov label if found
+    const labelParam = window._moovLabelId ? `&labelIds=${window._moovLabelId}` : '';
+    const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20${labelParam}`, {
       headers: { Authorization: 'Bearer ' + token }
     });
     const listData = await listRes.json();
@@ -553,6 +564,56 @@ RULES:
     S.replyDraft=draft;
   }catch{S.replyDraft='';}
   render();
+}
+
+async function sendReply(email){
+  const replyArea = document.getElementById('replyArea');
+  const body = replyArea?.value || S.replyDraft;
+  if(!body || !body.trim()){ alert('Write a reply first'); return; }
+
+  const token = window._gTok || localStorage.getItem('pa_gmail_token');
+  if(!token){ alert('Gmail not connected — reload and sign in'); return; }
+
+  // Build RFC 2822 email
+  const to = email.from_email || email.from_name;
+  const subject = (email.subject||'').startsWith('Re:') ? email.subject : 'Re: ' + (email.subject||'');
+  const raw = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    `In-Reply-To: ${email.id}`,
+    `References: ${email.id}`,
+    `Content-Type: text/plain; charset=UTF-8`,
+    '',
+    body
+  ].join('\r\n');
+
+  // Base64url encode
+  const encoded = btoa(unescape(encodeURIComponent(raw))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+
+  // Update UI
+  const btn = document.getElementById('btnSendReply');
+  if(btn){ btn.textContent='Sending...'; btn.disabled=true; }
+
+  try{
+    const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/send`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw: encoded, threadId: email.threadId })
+    });
+    const data = await res.json();
+    if(data.error) throw new Error(data.error.message);
+
+    // Success — close compose and show confirmation
+    S.composingReply = null;
+    S.replyDraft = '';
+    S.sendSuccess = email.id;
+    render();
+    setTimeout(()=>{ S.sendSuccess=null; render(); }, 3000);
+  }catch(e){
+    console.error('Send failed:', e);
+    if(btn){ btn.textContent='Send failed — try again'; btn.disabled=false; }
+    alert('Failed to send: ' + e.message);
+  }
 }
 
 async function fetchClickUp(){
@@ -871,9 +932,9 @@ function renderGmailTab(){
     }).join('')}
   </div>
 
-  ${sel?`<div style="display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 120px);overflow-y:auto">
-    <!-- Email detail -->
-    <div class="edetail">
+  ${sel?`<div style="display:flex;flex-direction:column;gap:0;height:calc(100vh - 120px)">
+    <!-- Email detail — shrinks when composing -->
+    <div class="edetail" style="flex:${composing?'0 1 auto':'1 1 auto'};overflow-y:auto;${composing?'max-height:40%':''}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
         <div style="flex:1;min-width:0">
           <div class="esubject">${esc(sel.subject)}</div>
@@ -885,22 +946,24 @@ function renderGmailTab(){
         <button class="ebtn" id="btnCloseEmail" style="flex-shrink:0">✕</button>
       </div>
       ${sel.bodyLoading?`<div class="ldr"><div class="spinner"></div>Loading email...</div>`:`<div class="ebody">${esc(sel.body||sel.snippet||'')}</div>`}
-      ${!composing&&!sel.bodyLoading?`<div class="eactions">
+      ${S.sendSuccess===sel.id?`<div style="margin-top:12px;padding:10px 14px;background:var(--success-dim);border-radius:var(--r);color:var(--success);font-size:13px;font-weight:500">✓ Reply sent successfully</div>`:''}
+      ${!composing&&!sel.bodyLoading&&S.sendSuccess!==sel.id?`<div class="eactions">
         <button class="ebtn pri" id="btnDraftReply">✏ Draft reply with Denise</button>
         <button class="ebtn" id="btnManualReply">↩ Write reply</button>
       </div>`:''}
     </div>
 
-    <!-- Compose reply -->
-    ${composing?`<div class="compose">
+    <!-- Compose reply — takes remaining space -->
+    ${composing?`<div class="compose" style="flex:1 1 auto;display:flex;flex-direction:column;min-height:280px;margin-top:10px">
       <div class="comphdr">
         <span>↩ Reply</span>
         <button class="ebtn" id="btnCancelReply" style="padding:4px 10px;font-size:11px">Cancel</button>
       </div>
       <div class="compto">To: <span>${esc(sel.from_name||sel.from_email)} &lt;${esc(sel.from_email)}&gt;</span></div>
-      <textarea class="compa" id="replyArea" placeholder="Type your reply...">${esc(S.replyDraft)}</textarea>
+      <textarea class="compa" id="replyArea" placeholder="Type your reply..." style="flex:1">${esc(S.replyDraft)}</textarea>
       <div class="compftr">
-        <button class="ebtn pri" id="btnDraftReply">✏ Redraft with Denise</button>
+        <button class="ebtn pri" id="btnSendReply">Send reply</button>
+        <button class="ebtn" id="btnDraftReply">✏ Redraft with Denise</button>
         <button class="ebtn" id="btnCopyReply">Copy to clipboard</button>
         <span class="comp-status" id="compStatus">${S.replyDraft==='Drafting reply...'?'Denise is drafting...':S.replyDraft?'Draft ready — edit as needed':''}</span>
       </div>
@@ -993,6 +1056,7 @@ function bindEvents(){
   document.querySelectorAll('[data-goto-email]').forEach(b=>{b.addEventListener('click',()=>{const idx=parseInt(b.dataset.gotoEmail);S.tab='gmail';S.selectedEmailIdx=idx;S.selectedEmail={...S.emails[idx],bodyLoading:true};render();fetchEmailBody(S.emails[idx].id).then(full=>{S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});});});
   const bdr=document.getElementById('btnDraftReply');if(bdr)bdr.addEventListener('click',()=>draftReply(S.selectedEmail));
   const bmr=document.getElementById('btnManualReply');if(bmr)bmr.addEventListener('click',()=>{S.composingReply=S.selectedEmail;S.replyDraft='';render();setTimeout(()=>{const ta=document.getElementById('replyArea');if(ta)ta.focus();},50);});
+  const bsr=document.getElementById('btnSendReply');if(bsr)bsr.addEventListener('click',()=>sendReply(S.selectedEmail));
   const bce=document.getElementById('btnCloseEmail');if(bce)bce.addEventListener('click',()=>{S.selectedEmail=null;S.composingReply=null;render();});
   const bcr=document.getElementById('btnCancelReply');if(bcr)bcr.addEventListener('click',()=>{S.composingReply=null;render();});
   const bcop=document.getElementById('btnCopyReply');if(bcop)bcop.addEventListener('click',()=>{const a=document.getElementById('replyArea');navigator.clipboard.writeText(a?.value||S.replyDraft);bcop.textContent='Copied!';setTimeout(()=>bcop.textContent='Copy to clipboard',2000);});
