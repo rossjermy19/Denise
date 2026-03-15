@@ -335,9 +335,18 @@ async function callClaudeMCP(system,msg,mcpServers){
 async function fetchEmails(){
   S.emailsLoading=true;S.emailsError=null;render();
   try{
-    // Get OAuth token via Google Identity Services
+    // Get OAuth token via Google Identity Services (persisted in localStorage)
     const token = await new Promise((resolve, reject) => {
+      // Check in-memory cache first, then localStorage
       if(window._gTok && window._gExp > Date.now()){ resolve(window._gTok); return; }
+      const savedTok = localStorage.getItem('pa_gmail_token');
+      const savedExp = parseInt(localStorage.getItem('pa_gmail_token_exp') || '0');
+      if(savedTok && savedExp > Date.now()){
+        window._gTok = savedTok;
+        window._gExp = savedExp;
+        resolve(savedTok);
+        return;
+      }
       if(!window.google || !window.google.accounts){ reject(new Error('Google sign-in loading, try again in a moment')); return; }
       const client = google.accounts.oauth2.initTokenClient({
         client_id: '597561744602-3pmav3dbg17itvh5d7kgr1ddil9ii548.apps.googleusercontent.com',
@@ -346,6 +355,8 @@ async function fetchEmails(){
           if(resp.error){ reject(new Error(resp.error)); return; }
           window._gTok = resp.access_token;
           window._gExp = Date.now() + 3500000;
+          localStorage.setItem('pa_gmail_token', resp.access_token);
+          localStorage.setItem('pa_gmail_token_exp', String(window._gExp));
           resolve(resp.access_token);
         },
         error_callback: (err) => reject(new Error(err.type + ': ' + (err.message||'')))
@@ -386,6 +397,10 @@ async function fetchEmails(){
     });
   } catch(e) {
     console.error('Gmail:', e);
+    // Clear cached token so next attempt triggers fresh login
+    window._gTok = null; window._gExp = 0;
+    localStorage.removeItem('pa_gmail_token');
+    localStorage.removeItem('pa_gmail_token_exp');
     S.emails = [];
     S.emailsError = e.message;
   }
@@ -855,6 +870,11 @@ if(isSetup()){
     fetch(`${API()}/api/setup/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:savedKey})}).catch(()=>{});
   }
   fetchData();startPolling();
+  // Auto-load Gmail if we have a cached token that hasn't expired
+  const cachedGmailExp = parseInt(localStorage.getItem('pa_gmail_token_exp') || '0');
+  if(localStorage.getItem('pa_gmail_token') && cachedGmailExp > Date.now()){
+    fetchEmails();
+  }
 }
 </script>
 </body>
