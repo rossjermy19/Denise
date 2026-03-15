@@ -402,7 +402,9 @@ async function fetchEmails(){
         const labelsData = await labelsRes.json();
         const allLabels = labelsData.labels || [];
         console.log('[Denise] Gmail labels found:', allLabels.map(l=>l.name).join(', '));
-        const moovLabel = allLabels.find(l => l.name.toLowerCase().includes('moov'));
+        // Prefer exact "Moov" parent label over sub-labels like "Moov/DPD Go Lives"
+        const moovLabel = allLabels.find(l => l.name.toLowerCase() === 'moov')
+          || allLabels.find(l => l.name.toLowerCase().includes('moov'));
         if(moovLabel){
           window._moovLabelId = moovLabel.id;
           console.log('[Denise] Using Moov label:', moovLabel.name, '→', moovLabel.id);
