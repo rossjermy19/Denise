@@ -17,6 +17,8 @@
   --warn:#D97706;--warn-dim:#FFFBEB;--warn-text:#D97706;
   --teal:#0891B2;--teal-dim:#ECFEFF;--teal-text:#0891B2;
   --purple:#7C3AED;--purple-dim:#F5F3FF;
+  --moov:#16A34A;--moov-dim:#F0FDF4;--moov-border:#86EFAC;
+  --despatch:#2563EB;--despatch-dim:#EFF6FF;--despatch-border:#93C5FD;
   --r:8px;--radius:10px;--radius-lg:14px;
   --shadow:0 1px 3px rgba(0,0,0,0.06),0 1px 2px rgba(0,0,0,0.04);
   --shadow-md:0 4px 16px rgba(0,0,0,0.08);
@@ -489,11 +491,21 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .cbtn{padding:4px 11px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:11px;font-family:var(--fd);cursor:pointer;transition:all .15s;flex-shrink:0}
 .cbtn:hover{background:var(--accent);color:white;border-color:var(--accent)}
 .bdg.bs{background:var(--success-dim);color:var(--success);font-family:var(--fd);font-size:11px;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center}
+/* Account source badges */
+.src-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;font-family:var(--fd);font-size:9px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;flex-shrink:0}
+.src-moov{background:var(--moov-dim);color:var(--moov);border:1px solid var(--moov-border)}
+.src-despatch{background:var(--despatch-dim);color:var(--despatch);border:1px solid var(--despatch-border)}
+.cal-day-dot.moov{background:var(--moov)}
+.cal-day-dot.despatch{background:var(--despatch)}
+.erow .src-badge{margin-left:auto;margin-right:8px}
+.priority-stripe.moov{background:var(--moov) !important}
+.priority-stripe.despatch{background:var(--despatch) !important}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js" async defer></script>
 <script>
 
 const S={
@@ -502,11 +514,13 @@ const S={
   emails:[],emailsLoading:false,selectedEmail:null,selectedEmailIdx:-1,
   emailAlerts:[],alertsLoading:false,alertsGenerated:false,
   composingReply:null,replyDraft:'',sendSuccess:null,
+  olEmails:[],olEmailsLoading:false,olEmailsError:null,
   calEvents:[],calLoading:false,calDayOffset:0,calError:null,
+  olCalEvents:[],olCalLoading:false,olCalWeek:{},
   calWeek:{},calWeekLoading:false,calPopupDay:null,calPopupEvents:[],calPopupLoading:false,
   weather:null,weatherLoading:false,
   voiceListening:false,voiceMode:null,voiceTranscript:'',voiceSpeaking:false,
-  messages:[{role:'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket and Gmail. Ask me what needs your attention today, or anything else."}],
+  messages:[{role:'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket, Gmail and Outlook. Ask me what needs your attention today, or anything else."}],
   chatLoading:false,
   syncing:false,syncMsg:null,
   wizStep:1,backendUrl:localStorage.getItem('pa_api_base')||'',
@@ -670,6 +684,7 @@ async function fetchCalendarForDay(dayOffset){
           location: ev.location || '',
           attendees: (ev.attendees||[]).map(a=>a.displayName||a.email).slice(0,5),
           hangoutLink: ev.hangoutLink || ev.conferenceData?.entryPoints?.[0]?.uri || '',
+          source: 'moov',
         };
       });
   }catch(e){ console.error('[Denise] Calendar day fetch failed:', e); return []; }
@@ -714,16 +729,18 @@ async function handleVoiceAsk(text){
     // Build calendar context — fetch the relevant day(s)
     let calCtx = '';
     let dayLabel = "Today's";
+    const hasOutlook = getMsalInstance()?.getAllAccounts().length>0;
     if(dayOffset === -1){
       // "this week" — fetch today through next 5 days
       dayLabel = "This week's";
       const weekEvents = [];
       for(let d=0;d<6;d++){
-        const events = await fetchCalendarForDay(d);
+        const [gEv, oEv] = await Promise.all([fetchCalendarForDay(d), hasOutlook?fetchOutlookCalendarForDay(d):[]]);
+        const events = [...gEv,...oEv];
         if(events.length > 0){
           const dt = new Date(); dt.setDate(dt.getDate()+d);
           const label = d===0?'Today':d===1?'Tomorrow':dt.toLocaleDateString('en-GB',{weekday:'long'});
-          weekEvents.push(`${label}:\n${events.map(ev=>`  ${ev.startStr}: ${ev.title}${ev.location?' at '+ev.location:''}${ev.attendees.length>0?' with '+ev.attendees.join(', '):''}`).join('\n')}`);
+          weekEvents.push(`${label}:\n${events.map(ev=>`  ${ev.startStr}: [${ev.source==='moov'?'Moov':'Despatch'}] ${ev.title}${ev.location?' at '+ev.location:''}${ev.attendees.length>0?' with '+ev.attendees.join(', '):''}`).join('\n')}`);
         }
       }
       calCtx = weekEvents.length>0 ? weekEvents.join('\n') : 'No events this week';
@@ -731,27 +748,29 @@ async function handleVoiceAsk(text){
       // Specific future day — fetch it
       const dt = new Date(); dt.setDate(dt.getDate()+dayOffset);
       dayLabel = dayOffset===1?"Tomorrow's":dt.toLocaleDateString('en-GB',{weekday:'long'})+"'s";
-      const events = await fetchCalendarForDay(dayOffset);
+      const [gEv, oEv] = await Promise.all([fetchCalendarForDay(dayOffset), hasOutlook?fetchOutlookCalendarForDay(dayOffset):[]]);
+      const events = [...gEv,...oEv];
       calCtx = events.length > 0
-        ? events.map(ev => `${ev.startStr}: ${ev.title}${ev.location?' at '+ev.location:''}${ev.attendees.length>0?' with '+ev.attendees.join(', '):''}`).join('\n')
+        ? events.map(ev => `${ev.startStr}: [${ev.source==='moov'?'Moov':'Despatch'}] ${ev.title}${ev.location?' at '+ev.location:''}${ev.attendees.length>0?' with '+ev.attendees.join(', '):''}`).join('\n')
         : `No events ${dayOffset===1?'tomorrow':'on '+dt.toLocaleDateString('en-GB',{weekday:'long'})}`;
     } else {
-      // Today — use cached events
-      calCtx = S.calEvents.length > 0
-        ? S.calEvents.map(ev => `${ev.startStr}: ${ev.title}${ev.location?' at '+ev.location:''}${ev.attendees.length>0?' with '+ev.attendees.join(', '):''}`).join('\n')
+      // Today — use cached events from both sources
+      const todayEvents = [...S.calEvents,...S.olCalEvents];
+      calCtx = todayEvents.length > 0
+        ? todayEvents.map(ev => `${ev.startStr}: [${ev.source==='moov'?'Moov':'Despatch'}] ${ev.title}${ev.location?' at '+ev.location:''}${(ev.attendees||[]).length>0?' with '+ev.attendees.join(', '):''}`).join('\n')
         : 'No events today';
     }
 
     const wxCtx = S.weather
       ? `${S.weather.temp}°C, ${S.weather.desc}, feels like ${S.weather.feelsLike}°, high ${S.weather.maxTemp}°, low ${S.weather.minTemp}°, ${S.weather.chanceOfRain}% rain, wind ${S.weather.windMph}mph`
       : 'Weather not loaded';
-    const emailCtx = S.emails.slice(0,8).map(e =>
-      `From ${e.from_name||e.from_email}: "${e.subject}"${e.needsReply?' [NEEDS ACTION]':''}`
+    const emailCtx = [...S.emails.slice(0,6),...S.olEmails.slice(0,4)].map(e =>
+      `[${e.source==='moov'?'Moov':'Despatch'}] From ${e.from_name||e.from_email}: "${e.subject}"${e.needsReply?' [NEEDS ACTION]':''}`
     ).join('\n') || 'Not loaded';
     const taskCtx = S.tasks.slice(0,5).map(t => `[${t.status}] ${t.text}`).join('\n') || 'None';
 
     const reply = await callClaude(
-      `You are Denise, a well-spoken English PA for Ross Jermy at Moov Parcel.
+      `You are Denise, a well-spoken English PA for Ross Jermy at Moov Parcel and The Despatch Company.
 Ross just spoke to you. Respond conversationally in 2-4 SHORT sentences — this will be read aloud, so keep it natural and brief. No bullet points, no markdown, no lists. Speak as if you're his PA sitting across the desk.
 
 ${dayLabel} diary:\n${calCtx}
@@ -779,7 +798,7 @@ async function handleVoiceReply(gist){
   render();
   try{
     const draft = await callClaude(
-      `You are drafting an email reply on behalf of Ross Jermy, who runs operations at Nino Logistics / Moov Parcel UK (shipping & logistics).
+      `You are drafting an email reply on behalf of Ross Jermy, who runs Nino Logistics / Moov Parcel UK (shipping & logistics) and The Despatch Company (consulting).
 
 Ross just told you the GIST of what he wants to say via voice. Turn his rough spoken words into a polished email reply.
 
@@ -866,6 +885,175 @@ async function getGoogleToken(){
   return token;
 }
 
+// ── Microsoft / Outlook auth (MSAL.js) ──
+let _msalInstance = null;
+const MS_CLIENT_ID = localStorage.getItem('pa_ms_client_id') || '';
+const MS_SCOPES = ['Mail.Read','Mail.ReadWrite','Calendars.Read','User.Read'];
+
+function getMsalInstance(){
+  if(_msalInstance) return _msalInstance;
+  const clientId = localStorage.getItem('pa_ms_client_id');
+  if(!clientId || !window.msal) return null;
+  _msalInstance = new msal.PublicClientApplication({
+    auth: { clientId, redirectUri: window.location.origin + window.location.pathname, authority: 'https://login.microsoftonline.com/common' },
+    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
+  });
+  return _msalInstance;
+}
+
+async function getMsToken(){
+  const inst = getMsalInstance();
+  if(!inst) throw new Error('Microsoft not configured — add your Azure App Client ID in settings');
+  const accounts = inst.getAllAccounts();
+  if(accounts.length > 0){
+    try{
+      const resp = await inst.acquireTokenSilent({ scopes: MS_SCOPES, account: accounts[0] });
+      return resp.accessToken;
+    }catch(e){ console.warn('[Denise] MS silent token failed, interactive:', e); }
+  }
+  const resp = await inst.acquireTokenPopup({ scopes: MS_SCOPES });
+  return resp.accessToken;
+}
+
+async function connectOutlook(){
+  try{
+    const token = await getMsToken();
+    console.log('[Denise] Outlook connected, token:', token.slice(0,10)+'...');
+    fetchOutlookEmails();
+    fetchOutlookCalendar();
+    fetchOutlookCalendarWeek();
+  }catch(e){
+    console.error('[Denise] Outlook auth failed:', e);
+    alert('Outlook sign-in failed: ' + e.message);
+  }
+}
+
+async function fetchOutlookEmails(){
+  if(S.olEmailsLoading) return;
+  S.olEmailsLoading=true; S.olEmailsError=null; render();
+  try{
+    const token = await getMsToken();
+    // Fetch recent emails from inbox
+    const res = await fetch('https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,isRead,bodyPreview,conversationId,body', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const data = await res.json();
+    if(data.error) throw new Error(data.error.message);
+    S.olEmails = (data.value || []).map(m => ({
+      id: m.id,
+      threadId: m.conversationId || m.id,
+      subject: (m.subject||'(no subject)').replace(/^(Re|Fwd|RE|FW):\s*/gi,''),
+      from_name: m.from?.emailAddress?.name || '',
+      from_email: m.from?.emailAddress?.address || '',
+      date: m.receivedDateTime || '',
+      snippet: (m.bodyPreview || '').slice(0,120),
+      body: m.body?.content ? (() => { const d=document.createElement('div'); d.innerHTML=m.body.content; return (d.textContent||d.innerText||'').slice(0,3000); })() : '',
+      is_unread: !m.isRead,
+      msgCount: 1,
+      source: 'despatch',
+    }));
+    console.log('[Denise] Outlook emails:', S.olEmails.length);
+  }catch(e){
+    console.error('[Denise] Outlook emails failed:', e);
+    S.olEmailsError = e.message;
+    S.olEmails = [];
+  }
+  S.olEmailsLoading=false; render();
+  // Trigger triage on combined emails
+  if(S.emails.length > 0 || S.olEmails.length > 0) generateAlerts();
+}
+
+async function fetchOutlookCalendarForDay(dayOffset){
+  try{
+    const token = await getMsToken();
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+    const startOfDay = target.toISOString().split('T')[0] + 'T00:00:00';
+    const endD = new Date(target); endD.setDate(endD.getDate()+1);
+    const endOfDay = endD.toISOString().split('T')[0] + 'T00:00:00';
+    const res = await fetch(`https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${startOfDay}&endDateTime=${endOfDay}&$top=20&$orderby=start/dateTime&$select=subject,start,end,location,isAllDay,attendees,onlineMeeting,webLink,onlineMeetingUrl`, {
+      headers: { 'Authorization': 'Bearer ' + token, 'Prefer': 'outlook.timezone="Europe/London"' }
+    });
+    const data = await res.json();
+    if(data.error) return [];
+    return (data.value||[])
+      .filter(ev => !(ev.subject||'').toLowerCase().includes('ross in sheffield'))
+      .map(ev => {
+        const start = ev.start?.dateTime ? new Date(ev.start.dateTime + (ev.start.dateTime.includes('Z')?'':'Z')) : null;
+        const allDay = ev.isAllDay;
+        return {
+          title: ev.subject || '(No title)',
+          startStr: allDay ? 'All day' : start ? start.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : '',
+          location: ev.location?.displayName || '',
+          attendees: (ev.attendees||[]).map(a=>a.emailAddress?.name||a.emailAddress?.address).slice(0,5),
+          hangoutLink: ev.onlineMeeting?.joinUrl || ev.onlineMeetingUrl || ev.webLink || '',
+          source: 'despatch',
+        };
+      });
+  }catch(e){ console.error('[Denise] Outlook calendar day failed:', e); return []; }
+}
+
+async function fetchOutlookCalendar(){
+  S.olCalLoading=true; render();
+  try{
+    const events = await fetchOutlookCalendarForDay(S.calDayOffset);
+    S.olCalEvents = events;
+  }catch(e){ console.error('[Denise] Outlook calendar failed:', e); }
+  S.olCalLoading=false; render();
+}
+
+async function fetchOutlookCalendarWeek(){
+  try{
+    const results = {};
+    await Promise.all([0,1,2,3,4,5,6].map(async offset => {
+      const events = await fetchOutlookCalendarForDay(offset);
+      const d = new Date(); d.setDate(d.getDate()+offset);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      results[key] = events.length;
+    }));
+    S.olCalWeek = results;
+  }catch(e){ console.error('[Denise] Outlook week calendar failed:', e); }
+  render();
+}
+
+async function sendOutlookReply(email){
+  const replyArea = document.getElementById('replyArea');
+  const body = replyArea?.value || S.replyDraft;
+  if(!body || !body.trim()){ alert('Write a reply first'); return; }
+  try{
+    const token = await getMsToken();
+    const btn = document.getElementById('btnSendReply');
+    if(btn){ btn.textContent='Sending...'; btn.disabled=true; }
+    await fetch(`https://graph.microsoft.com/v1.0/me/messages/${email.id}/reply`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ comment: body })
+    });
+    S.composingReply=null; S.replyDraft=''; S.sendSuccess=email.id; render();
+    setTimeout(()=>{ S.sendSuccess=null; render(); }, 3000);
+  }catch(e){
+    console.error('[Denise] Outlook send failed:', e);
+    alert('Failed to send: ' + e.message);
+  }
+}
+
+async function trashOutlookEmail(email){
+  if(!email) return;
+  if(!confirm('Move this email to trash?')) return;
+  try{
+    const token = await getMsToken();
+    await fetch(`https://graph.microsoft.com/v1.0/me/messages/${email.id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    S.olEmails = S.olEmails.filter(e => e.id !== email.id);
+    S.selectedEmail=null; S.composingReply=null; render();
+  }catch(e){
+    console.error('[Denise] Outlook trash failed:', e);
+    alert('Failed to delete: ' + e.message);
+  }
+}
+
 async function fetchEmails(){
   if(S.emailsLoading) { console.log('[Denise] fetchEmails already in progress, skipping'); return; }
   S.emailsLoading=true;S.emailsError=null;S.alertsGenerated=false;render();
@@ -946,6 +1134,7 @@ async function fetchEmails(){
           snippet: (latest.snippet || '').slice(0, 120),
           is_unread: hasUnread,
           msgCount: msgs.length,
+          source: 'moov',
         };
       });
   } catch(e) {
@@ -1055,6 +1244,7 @@ async function fetchCalendar(){
         attendees: (ev.attendees||[]).map(a=>a.displayName||a.email).slice(0,5),
         hangoutLink: ev.hangoutLink || ev.conferenceData?.entryPoints?.[0]?.uri || '',
         status: ev.status,
+        source: 'moov',
       };
     }).filter(ev => ev.status !== 'cancelled')
       .filter(ev => !ev.title.toLowerCase().includes('ross in sheffield'))
@@ -1089,8 +1279,15 @@ async function openCalendarDay(offset){
   S.calPopupLoading = true;
   S.calPopupEvents = [];
   render();
-  const events = await fetchCalendarForDay(offset);
-  S.calPopupEvents = events;
+  const [gEvents, oEvents] = await Promise.all([
+    fetchCalendarForDay(offset),
+    getMsalInstance()?.getAllAccounts().length>0 ? fetchOutlookCalendarForDay(offset) : Promise.resolve([])
+  ]);
+  S.calPopupEvents = [...gEvents, ...oEvents].sort((a,b) => {
+    if(a.startStr==='All day') return -1;
+    if(b.startStr==='All day') return 1;
+    return a.startStr.localeCompare(b.startStr);
+  });
   S.calPopupLoading = false;
   render();
 }
@@ -1130,10 +1327,11 @@ async function fetchWeather(){
 async function generateAlerts(){
   S.alertsLoading=true;S.alertsGenerated=true;render();
   try{
-    // Fetch the latest message body for each thread so Claude can read the actual content
-    const emailsToScan = S.emails.slice(0,15);
+    // Combine both inboxes for triage
+    const emailsToScan = [...S.emails.slice(0,12),...S.olEmails.slice(0,8)].slice(0,15);
     const bodies = await Promise.all(emailsToScan.map(async (e) => {
       try{
+        if(e.source==='despatch') return (e.body||e.snippet||'').slice(0,500);
         const full = await fetchEmailBody(e.id);
         return full?.body?.slice(0,500) || e.snippet || '';
       }catch{ return e.snippet || ''; }
@@ -1141,11 +1339,11 @@ async function generateAlerts(){
     const isRoss = addr => /ross\.?jermy/i.test(addr) || /ross/i.test(addr.split('<')[0]||'');
     const emailCtx=emailsToScan.map((e,i)=>{
       const selfSent = isRoss(e.from_email||'') && e.msgCount <= 1;
-      return `${i+1}. From: ${e.from_name||e.from_email} <${e.from_email}>${selfSent?' [SELF-SENT REMINDER]':''} | Subject: ${e.subject} | Thread messages: ${e.msgCount||1} | Unread: ${e.is_unread}\nLatest message:\n${bodies[i]}`;
+      return `${i+1}. [${e.source==='moov'?'MOOV PARCEL':'DESPATCH CO'}] From: ${e.from_name||e.from_email} <${e.from_email}>${selfSent?' [SELF-SENT REMINDER]':''} | Subject: ${e.subject} | Thread messages: ${e.msgCount||1} | Unread: ${e.is_unread}\nLatest message:\n${bodies[i]}`;
     }).join('\n---\n');
     console.log('[Denise] Triage input — emails with bodies:', emailsToScan.map((e,i) => `${i+1}. ${e.from_name}: "${e.subject}" (body: ${bodies[i]?.length||0} chars)`).join('\n'));
     const reply=await callClaude(
-      `You are Denise, PA for Ross Jermy at Moov Parcel / Nino Logistics (UK shipping logistics).
+      `You are Denise, PA for Ross Jermy. He runs two businesses: Moov Parcel / Nino Logistics (shipping logistics) and The Despatch Company (consulting). Emails from both inboxes are listed below.
 
 Your job: read the LATEST MESSAGE in each email thread and decide if Ross personally needs to take action. Be VERY strict — most emails should NOT be flagged. When in doubt, don't flag it.
 
@@ -1194,20 +1392,23 @@ needsReply = 1-based indexes. Most inboxes should have 0-3 items flagged. If not
       console.log('[Denise] Triage result:', parsed.needsReply?.length||0, 'of', S.emails.length, 'flagged. Indexes:', JSON.stringify(parsed.needsReply));
       // FIRST: mark ALL emails as NOT needing reply
       S.emails.forEach((e,i)=>{ e.needsReply=false; e.alertPriority=null; });
-      // THEN: only flag the ones Claude identified
-      (parsed.needsReply||[]).forEach(idx=>{ if(S.emails[idx-1]) S.emails[idx-1].needsReply=true; });
-      (parsed.alerts||[]).forEach(a=>{ if(S.emails[a.email_index-1]) S.emails[a.email_index-1].alertPriority=a.priority; });
+      S.olEmails.forEach((e,i)=>{ e.needsReply=false; e.alertPriority=null; });
+      // THEN: only flag the ones Claude identified (indexes map to emailsToScan)
+      (parsed.needsReply||[]).forEach(idx=>{ if(emailsToScan[idx-1]) emailsToScan[idx-1].needsReply=true; });
+      (parsed.alerts||[]).forEach(a=>{ if(emailsToScan[a.email_index-1]) emailsToScan[a.email_index-1].alertPriority=a.priority; });
       S.emailAlerts=parsed.alerts||[];
     } else {
       console.warn('[Denise] Triage: no valid JSON found in response');
       // Default: nothing needs reply
       S.emails.forEach((e,i)=>{ e.needsReply=false; e.alertPriority=null; });
+      S.olEmails.forEach((e,i)=>{ e.needsReply=false; e.alertPriority=null; });
       S.emailAlerts=[];
     }
   }catch(e){
     console.error('[Denise] Triage failed:', e);
     // On failure, default to nothing flagged (not everything flagged)
     S.emails.forEach((e,i)=>{ e.needsReply=false; e.alertPriority=null; });
+    S.olEmails.forEach((e,i)=>{ e.needsReply=false; e.alertPriority=null; });
     S.emailAlerts=[];
   }
   S.alertsLoading=false;render();
@@ -1217,7 +1418,7 @@ async function draftReply(email){
   S.composingReply=email;S.replyDraft='Drafting reply...';render();
   try{
     const draft=await callClaude(
-      `You are drafting an email reply on behalf of Ross Jermy, who runs operations at Nino Logistics / Moov Parcel UK (shipping & logistics).
+      `You are drafting an email reply on behalf of Ross Jermy, who runs operations at Nino Logistics / Moov Parcel UK (shipping & logistics) and also does consulting at The Despatch Company.
 
 ROSS'S WRITING STYLE:
 - Friendly but professional — never stiff or corporate
@@ -1239,7 +1440,7 @@ RULES:
 - End with "Cheers,\nRoss" or "Thanks,\nRoss"
 - If the email requires information Ross would need to check, say so naturally (e.g., "Let me check on this and get back to you today")
 - Never make up specific figures, dates, or commitments Ross hasn't confirmed`,
-      `Draft a reply to this email:\n\nFrom: ${email.from_name||email.from_email} <${email.from_email}>\nSubject: ${email.subject}\nContent: ${email.body||email.snippet}`,
+      `Draft a reply to this email (from ${email.source==='moov'?'Moov Parcel':'Despatch Company'} inbox):\n\nFrom: ${email.from_name||email.from_email} <${email.from_email}>\nSubject: ${email.subject}\nContent: ${email.body||email.snippet}`,
       {max_tokens: 800}
     );
     S.replyDraft=draft;
@@ -1408,8 +1609,8 @@ async function sendChat(msg){
   S.messages.push({role:'user',text:msg});S.chatLoading=true;render();scrollChat();
   const tCtx=S.tasks.slice(0,10).map(t=>`- [${t.status}] ${t.text} (due:${t.due})`).join('\n');
   const rCtx=S.calls.slice(0,5).map(c=>`- "${c.title}": ${c.bulletPoints?.join(';')||'no summary'}`).join('\n');
-  const eCtx=S.emails.slice(0,8).map(e=>`- From ${e.from_name||e.from_email}: "${e.subject}" — ${e.snippet?.slice(0,80)}`).join('\n');
-  const sys=`You are Denise, sharp friendly PA for Ross at Nino Logistics/Moov Parcel UK. Concise, warm, practical. Max 150 words unless drafting.\n\nPocket tasks:\n${tCtx||'None'}\nRecordings:\n${rCtx||'None'}\nGmail:\n${eCtx||'Not loaded'}`;
+  const eCtx=[...S.emails.slice(0,6),...S.olEmails.slice(0,4)].map(e=>`- [${e.source==='moov'?'Moov':'Despatch'}] From ${e.from_name||e.from_email}: "${e.subject}" — ${e.snippet?.slice(0,80)}`).join('\n');
+  const sys=`You are Denise, sharp friendly PA for Ross at Nino Logistics/Moov Parcel UK and The Despatch Company. Concise, warm, practical. Max 150 words unless drafting.\n\nPocket tasks:\n${tCtx||'None'}\nRecordings:\n${rCtx||'None'}\nEmails:\n${eCtx||'Not loaded'}`;
   try{const r=await callClaude(sys,msg);S.messages.push({role:'ai',text:r});}
   catch{S.messages.push({role:'ai',text:'Could not reach API.'});}
   S.chatLoading=false;render();scrollChat();
@@ -1470,14 +1671,15 @@ function renderSetup(){
 
 function renderDash(){
   const overdue=S.tasks.filter(t=>t.status==='overdue').length;
-  const unread=S.emails.filter(e=>e.is_unread).length;
+  const allEmails=[...S.emails,...S.olEmails];
+  const unread=allEmails.filter(e=>e.is_unread).length;
   const today=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
   return `<div>
   <div class="header">
     <div><div class="logo">DENISE <span>/ ROSS'S PA</span></div><div class="dateline">${today.toUpperCase()}</div></div>
     <div class="nav">
       <button class="nav-btn ${S.tab==='dashboard'?'active':''}" data-tab="dashboard">DASHBOARD</button>
-      <button class="nav-btn ${S.tab==='gmail'?'active':''}" data-tab="gmail">GMAIL${unread>0?'<span class="bdot"></span>':''}</button>
+      <button class="nav-btn ${S.tab==='gmail'?'active':''}" data-tab="gmail">EMAIL${unread>0?'<span class="bdot"></span>':''}</button>
       
       <button class="nav-btn ${S.tab==='pocket'?'active':''}" data-tab="pocket">RECORDINGS</button>
       <button class="nav-btn ${S.tab==='pa'?'active':''}" data-tab="pa">CHAT WITH DENISE</button>
@@ -1487,6 +1689,7 @@ function renderDash(){
       <button class="hbtn" id="btnForceSync" ${S.syncing?'disabled':''}>↻ Refresh all</button>
       <button class="hbtn" id="btnSync" ${S.syncing?'disabled':''}>${S.syncing?'Syncing...':'↓ Sync Pocket'}</button>
       <div class="live"><div class="ldot"></div>Live</div>
+      <button class="rbtn" id="btnOutlookSettings" title="Outlook settings" style="${getMsalInstance()?.getAllAccounts().length>0?'color:var(--despatch)':''}">📧</button>
       <button class="rbtn" id="btnVoiceSettings" title="Voice settings">${localStorage.getItem('pa_elevenlabs_key')?'🎙':'🔇'}</button>
       <button class="rbtn" id="btnReset">Reset</button>
     </div>
@@ -1498,7 +1701,7 @@ function renderDash(){
 
 function renderDashTab(overdue,unread){
   // Only show emails that genuinely need action — no spam, no noise
-  const needsReply = S.emails.filter(e=>e.needsReply).sort((a,b)=>{
+  const needsReply = [...S.emails,...S.olEmails].filter(e=>e.needsReply).sort((a,b)=>{
     const pOrder={urgent:0,high:1,medium:2};
     const pa=pOrder[a.alertPriority]??3, pb=pOrder[b.alertPriority]??3;
     return pa-pb;
@@ -1526,7 +1729,7 @@ function renderDashTab(overdue,unread){
 
   <!-- 5 stat tiles -->
   <div class="stats stats-5">
-    <div class="stat"><div class="slbl">${S.calDayOffset===0?'Meetings today':S.calDayOffset===1?'Meetings tomorrow':'Meetings'}</div><div class="sval" style="color:var(--accent)">${S.calEvents.length}</div></div>
+    <div class="stat"><div class="slbl">${S.calDayOffset===0?'Meetings today':S.calDayOffset===1?'Meetings tomorrow':'Meetings'}</div><div class="sval" style="color:var(--accent)">${S.calEvents.length + S.olCalEvents.length}</div></div>
     <div class="stat"><div class="slbl">Emails to action</div><div class="sval" style="color:${needsReply.length>0?'var(--danger)':'var(--teal)'}">${needsReply.length}</div></div>
     <div class="stat"><div class="slbl">Pocket tasks</div><div class="sval" style="color:var(--accent)">${S.stats.open||0}</div></div>
     <div class="stat"><div class="slbl">Overdue</div><div class="sval" style="color:var(--danger)">${overdue||0}</div></div>
@@ -1560,16 +1763,17 @@ function renderDashTab(overdue,unread){
     <!-- Diary — compact week strip -->
     <div class="card">
       <div class="chdr"><span class="ctitle">This week</span>${S.calWeekLoading?'<div class="spinner" style="width:12px;height:12px"></div>':''}</div>
-      ${window._gTok?`<div class="cal-strip">
+      ${window._gTok || getMsalInstance()?.getAllAccounts().length>0?`<div class="cal-strip">
         ${[0,1,2,3,4,5,6].map(offset => {
           const d=new Date();d.setDate(d.getDate()+offset);
           const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-          const count=S.calWeek[key]||0;
+          const gCount=S.calWeek[key]||0;
+          const oCount=(S.olCalWeek||{})[key]||0;
           const dayName=d.toLocaleDateString('en-GB',{weekday:'short'}).slice(0,3);
           return `<div class="cal-day${offset===0?' today':''}" data-cal-offset="${offset}">
             <div class="cal-day-name">${dayName}</div>
             <div class="cal-day-num">${d.getDate()}</div>
-            <div class="cal-day-dots">${Array(Math.min(count,4)).fill('<div class="cal-day-dot"></div>').join('')}</div>
+            <div class="cal-day-dots">${Array(Math.min(gCount,3)).fill('<div class="cal-day-dot moov"></div>').join('')}${Array(Math.min(oCount,3)).fill('<div class="cal-day-dot despatch"></div>').join('')}</div>
           </div>`;
         }).join('')}
       </div>`:
@@ -1590,9 +1794,12 @@ function renderDashTab(overdue,unread){
     ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Scanning your inbox...</div>`:
       S.emailsError?`
         <div style="padding:14px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:8px">Gmail error: ${esc(S.emailsError)}</div><button style="padding:8px 18px;border-radius:var(--r);border:none;background:var(--accent);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnLoadEmail">Try again</button></div>
-      `:S.emails.length===0?`
-        <div style="font-size:13px;color:var(--muted);padding:4px 0">Load your Gmail inbox — Denise will flag emails needing a reply.</div>
-        <button style="margin-top:10px;padding:8px 18px;border-radius:var(--r);border:none;background:var(--accent);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnLoadEmail">Load Gmail</button>
+      `:S.emails.length===0&&S.olEmails.length===0?`
+        <div style="font-size:13px;color:var(--muted);padding:4px 0">Load your inboxes — Denise will flag emails needing a reply.</div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button style="padding:8px 18px;border-radius:var(--r);border:none;background:var(--moov);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnLoadEmail">Load Gmail</button>
+          ${localStorage.getItem('pa_ms_client_id')?`<button style="padding:8px 18px;border-radius:var(--r);border:none;background:var(--despatch);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnConnectOutlookDash">Connect Outlook</button>`:''}
+        </div>
       `:S.alertsLoading?`
         <div class="ldr"><div class="spinner"></div>Denise is checking which emails need attention...</div>
       `:needsReply.length===0?`
@@ -1612,7 +1819,7 @@ function renderDashTab(overdue,unread){
                   ${pLabels[p]||'↩ Reply needed'}
                 </span>
               </div>
-              <div class="priority-from">${esc(e.from_name||e.from_email)}</div>
+              <div class="priority-from">${esc(e.from_name||e.from_email)} <span class="src-badge ${e.source==='moov'?'src-moov':'src-despatch'}">${e.source==='moov'?'Moov':'Despatch'}</span></div>
               <div class="priority-subject">${esc(e.subject)}</div>
               <div class="priority-snippet">${esc((e.snippet||'').slice(0,110))}</div>
             </div>
@@ -1659,7 +1866,7 @@ function renderDashTab(overdue,unread){
           <div class="cal-popup-ev">
             <div class="cal-popup-time">${esc(ev.startStr)}</div>
             <div class="cal-popup-info">
-              <div class="cal-popup-name">${esc(ev.title)}</div>
+              <div class="cal-popup-name">${esc(ev.title)} <span class="src-badge ${ev.source==='moov'?'src-moov':'src-despatch'}" style="vertical-align:middle">${ev.source==='moov'?'Moov':'Despatch'}</span></div>
               ${ev.location?`<div class="cal-popup-loc">${esc(ev.location)}</div>`:''}
               ${ev.attendees.length>0?`<div class="cal-popup-att">${esc(ev.attendees.slice(0,5).join(', '))}</div>`:''}
             </div>
@@ -1675,30 +1882,40 @@ function renderDashTab(overdue,unread){
 function renderGmailTab(){
   const sel=S.selectedEmail;
   const composing=S.composingReply?.id===sel?.id;
-  const actionable=S.emails.filter(e=>e.needsReply);
-  const unreadCount=S.emails.filter(e=>e.is_unread).length;
+  const combined=[...S.emails.map((e,i)=>({...e,_src:'moov',_idx:i})),...S.olEmails.map((e,i)=>({...e,_src:'despatch',_idx:i}))];
+  combined.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  const actionable=combined.filter(e=>e.needsReply);
+  const unreadCount=combined.filter(e=>e.is_unread).length;
+  const msConnected=getMsalInstance()?.getAllAccounts().length>0;
 
   return `<div class="gmail-layout${sel?' has-detail':''}">
   <!-- Email list -->
   <div class="card gmail-list">
     <div class="chdr">
-      <span class="ctitle">Inbox</span>
+      <span class="ctitle">Unified inbox</span>
       <div style="display:flex;gap:8px;align-items:center">
         ${actionable.length>0?`<span class="bdg bd">${actionable.length} to action</span>`:`<span class="bdg bt">${unreadCount} unread</span>`}
         <button style="padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--accent);font-size:11px;font-family:var(--fd);cursor:pointer" id="btnRefreshEmail">↻</button>
       </div>
     </div>
-    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading your inbox...</div>`:S.emailsError?`<div style="padding:16px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:8px">Failed to load Gmail: ${esc(S.emailsError)}</div><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Try again</button></div>`:S.emails.length===0?`<div style="font-size:13px;color:var(--muted);padding:16px 18px">No emails loaded.<br><br><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Load Gmail inbox</button></div>`:
-    S.emails.map((e,i)=>{
-      const isSelected=sel&&S.selectedEmailIdx===i;
+    ${!msConnected && localStorage.getItem('pa_ms_client_id')?`<div style="padding:8px 18px;background:var(--despatch-dim);border-bottom:1px solid var(--border-light);display:flex;align-items:center;gap:8px">
+      <span style="font-size:12px;color:var(--despatch)">Outlook not connected</span>
+      <button style="padding:4px 12px;border-radius:var(--r);border:1px solid var(--despatch-border);background:white;color:var(--despatch);font-size:11px;font-family:var(--fd);cursor:pointer" id="btnConnectOutlook">Connect Outlook</button>
+    </div>`:''}
+    ${S.emailsLoading||S.olEmailsLoading?`<div class="ldr"><div class="spinner"></div>Loading your inbox...</div>`:S.emailsError?`<div style="padding:16px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:8px">Failed to load Gmail: ${esc(S.emailsError)}</div><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Try again</button></div>`:combined.length===0?`<div style="font-size:13px;color:var(--muted);padding:16px 18px">No emails loaded.<br><br><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Load Gmail inbox</button></div>`:
+    combined.map((e,i)=>{
+      const isSelected=sel&&sel.id===e.id;
       const needsAction=e.needsReply;
-      return `<div class="erow ${e.is_unread?'unread':''} ${isSelected?'sel':''}" data-email="${i}" style="position:relative">
-        ${needsAction?`<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--danger);border-radius:2px 0 0 2px"></div>`:''}
+      const srcClass=e._src==='moov'?'src-moov':'src-despatch';
+      const srcLabel=e._src==='moov'?'Moov':'Despatch';
+      return `<div class="erow ${e.is_unread?'unread':''} ${isSelected?'sel':''}" data-email-src="${e._src}" data-email-srcidx="${e._idx}" style="position:relative;border-left:3px solid ${e._src==='moov'?'var(--moov)':'var(--despatch)'}">
+        ${needsAction?`<div style="position:absolute;right:0;top:0;bottom:0;width:3px;background:var(--danger);border-radius:0 2px 2px 0"></div>`:''}
         <div class="edot ${e.is_unread?'':'read'}"></div>
         <div class="einfo">
           <div class="esender">${esc(e.from_name||e.from_email)}${e.msgCount>1?` <span style="font-size:11px;font-weight:400;color:var(--muted)">(${e.msgCount})</span>`:''}</div>
           <div class="esubj">${esc(e.subject)}</div>
         </div>
+        <span class="src-badge ${srcClass}">${srcLabel}</span>
         <div class="etime">${esc(fmtEmailDate(e.date))}</div>
       </div>`;
     }).join('')}
@@ -1710,7 +1927,7 @@ function renderGmailTab(){
     <div class="edetail" style="flex:${composing?'0 1 auto':'1 1 auto'};overflow-y:auto;${composing?'max-height:40%':''}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
         <div style="flex:1;min-width:0">
-          <div class="esubject">${esc(sel.subject)}</div>
+          <div class="esubject">${esc(sel.subject)} <span class="src-badge ${sel.source==='moov'?'src-moov':'src-despatch'}" style="vertical-align:middle;font-size:10px">${sel.source==='moov'?'Moov Parcel':'Despatch Co'}</span></div>
           <div class="emeta">
             <strong>${esc(sel.from_name||sel.from_email)}</strong>${sel.from_email&&sel.from_name?` &lt;${esc(sel.from_email)}&gt;`:''}
             ${sel.date?`<br><span style="color:var(--muted)">${new Date(sel.date).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span>`:''}
@@ -1800,7 +2017,7 @@ function renderPATab(){
     <div class="chat-avatar"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
     <div class="chat-hdr-info">
       <div class="chat-hdr-name">Chat with Denise</div>
-      <div class="chat-hdr-sub">${S.tasks.length} tasks · ${S.emails.length} emails · your PA is ready</div>
+      <div class="chat-hdr-sub">${S.tasks.length} tasks · ${S.emails.length + S.olEmails.length} emails · your PA is ready</div>
     </div>
     <div class="chat-hdr-mic">
       <button class="mic-btn small" id="btnAskDeniseChat" title="Ask by voice"${S.voiceListening?' style="display:none"':''}>
@@ -1829,7 +2046,7 @@ function renderPATab(){
 
 function bindEvents(){
   // Nav
-  document.querySelectorAll('[data-tab]').forEach(btn=>{btn.addEventListener('click',()=>{S.tab=btn.dataset.tab;render();if(S.tab==='gmail'&&S.emails.length===0&&!S.emailsLoading)fetchEmails();});});
+  document.querySelectorAll('[data-tab]').forEach(btn=>{btn.addEventListener('click',()=>{S.tab=btn.dataset.tab;render();if(S.tab==='gmail'){if(S.emails.length===0&&!S.emailsLoading)fetchEmails();if(S.olEmails.length===0&&!S.olEmailsLoading&&getMsalInstance()?.getAllAccounts().length>0)fetchOutlookEmails();}});});
   // Wizard
   const ui=document.getElementById('backendUrl');if(ui)ui.addEventListener('input',e=>S.backendUrl=e.target.value);
   const bcb=document.getElementById('btnCheckBackend');if(bcb)bcb.addEventListener('click',()=>{S.backendUrl=document.getElementById('backendUrl')?.value||S.backendUrl;wizCheckBackend();});
@@ -1839,8 +2056,27 @@ function bindEvents(){
   const bsk=document.getElementById('btnSkip');if(bsk)bsk.addEventListener('click',wizSkip);
   // Header
   const bsy=document.getElementById('btnSync');if(bsy)bsy.addEventListener('click',syncPocket);
-  const bfs=document.getElementById('btnForceSync');if(bfs)bfs.addEventListener('click',forceSyncPocket);
-  const brs=document.getElementById('btnReset');if(brs)brs.addEventListener('click',()=>{if(confirm('Reset Denise?')){localStorage.removeItem('pa_setup_done');localStorage.removeItem('pa_api_base');S.wizStep=1;S.apiKey='';S.keyResult=null;S.tasks=[];S.calls=[];S.emails=[];render();}});
+  const bfs=document.getElementById('btnForceSync');if(bfs)bfs.addEventListener('click',()=>{forceSyncPocket();if(getMsalInstance()?.getAllAccounts().length>0){fetchOutlookEmails();fetchOutlookCalendar();fetchOutlookCalendarWeek();}});
+  const brs=document.getElementById('btnReset');if(brs)brs.addEventListener('click',()=>{if(confirm('Reset Denise?')){localStorage.removeItem('pa_setup_done');localStorage.removeItem('pa_api_base');S.wizStep=1;S.apiKey='';S.keyResult=null;S.tasks=[];S.calls=[];S.emails=[];S.olEmails=[];S.olCalEvents=[];S.olCalWeek={};render();}});
+  const bos=document.getElementById('btnOutlookSettings');if(bos)bos.addEventListener('click',()=>{
+    const msConnected=getMsalInstance()?.getAllAccounts().length>0;
+    if(msConnected){
+      if(confirm('Outlook is connected as '+getMsalInstance().getAllAccounts()[0].username+'.\n\nDisconnect?')){
+        getMsalInstance().getAllAccounts().forEach(a=>getMsalInstance().getAccountByHomeId(a.homeAccountId)&&getMsalInstance().removeAccount(a).catch(()=>{}));
+        _msalInstance=null;S.olEmails=[];S.olCalEvents=[];S.olCalWeek={};render();
+      }
+    } else {
+      const current=localStorage.getItem('pa_ms_client_id')||'';
+      const clientId=prompt('Enter your Azure App Client ID for Outlook (ross.jermy@thedespatchcompany.com):\n\nTo get this:\n1. Go to portal.azure.com → App registrations\n2. Create a new app (or use existing)\n3. Add redirect URI: '+window.location.origin+window.location.pathname+'\n4. API permissions: Mail.Read, Mail.ReadWrite, Calendars.Read, User.Read\n5. Copy the Application (client) ID',current);
+      if(clientId===null) return;
+      if(clientId.trim()){
+        localStorage.setItem('pa_ms_client_id',clientId.trim());
+        _msalInstance=null; // reset so it picks up new ID
+        alert('Client ID saved. Click 📧 again to sign in.');
+        render();
+      }
+    }
+  });
   const bvs=document.getElementById('btnVoiceSettings');if(bvs)bvs.addEventListener('click',()=>{
     const current=localStorage.getItem('pa_elevenlabs_key')||'';
     const key=prompt('ElevenLabs API key for natural voice (leave blank for browser voice):',current);
@@ -1868,14 +2104,24 @@ function bindEvents(){
   // Gmail
   const ble=document.getElementById('btnLoadEmail');if(ble)ble.addEventListener('click',fetchEmails);
   const ble2=document.getElementById('btnLoadEmail2');if(ble2)ble2.addEventListener('click',fetchEmails);
-  const bre=document.getElementById('btnRefreshEmail');if(bre)bre.addEventListener('click',fetchEmails);
-  document.querySelectorAll('[data-email]').forEach(row=>{row.addEventListener('click',async()=>{const idx=parseInt(row.dataset.email);const email={...S.emails[idx]};S.selectedEmailIdx=idx;S.selectedEmail={...email,bodyLoading:true};S.composingReply=null;render();const full=await fetchEmailBody(email.id);S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});});
-  document.querySelectorAll('[data-goto-email]').forEach(b=>{b.addEventListener('click',()=>{const idx=parseInt(b.dataset.gotoEmail);S.tab='gmail';S.selectedEmailIdx=idx;S.selectedEmail={...S.emails[idx],bodyLoading:true};render();fetchEmailBody(S.emails[idx].id).then(full=>{S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});});});
+  const bre=document.getElementById('btnRefreshEmail');if(bre)bre.addEventListener('click',()=>{fetchEmails();if(getMsalInstance()?.getAllAccounts().length>0)fetchOutlookEmails();});
+  const bco=document.getElementById('btnConnectOutlook');if(bco)bco.addEventListener('click',connectOutlook);
+  const bcod=document.getElementById('btnConnectOutlookDash');if(bcod)bcod.addEventListener('click',connectOutlook);
+  document.querySelectorAll('[data-email-src]').forEach(row=>{row.addEventListener('click',async()=>{
+    const src=row.dataset.emailSrc;
+    const idx=parseInt(row.dataset.emailSrcidx);
+    const pool=src==='moov'?S.emails:S.olEmails;
+    const email={...pool[idx]};
+    S.selectedEmailIdx=idx;S.selectedEmail={...email,bodyLoading:true,source:src};S.composingReply=null;render();
+    if(src==='moov'){const full=await fetchEmailBody(email.id);S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();}
+    else{S.selectedEmail={...S.selectedEmail,bodyLoading:false};render();}
+  });});
+  document.querySelectorAll('[data-goto-email]').forEach(b=>{b.addEventListener('click',()=>{const idx=parseInt(b.dataset.gotoEmail);const src=b.dataset.gotoSrc||'moov';const pool=src==='moov'?S.emails:S.olEmails;S.tab='gmail';S.selectedEmailIdx=idx;S.selectedEmail={...pool[idx],bodyLoading:true,source:src};render();if(src==='moov'){fetchEmailBody(pool[idx].id).then(full=>{S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});}else{S.selectedEmail={...S.selectedEmail,bodyLoading:false};render();}});});
   document.querySelectorAll('[data-goto-call]').forEach(b=>{b.addEventListener('click',()=>{const c=S.calls.find(x=>x.id===b.dataset.gotoCall);if(c){S.tab='pocket';S.selectedCall=c;render();}});});
   const bdr=document.getElementById('btnDraftReply');if(bdr)bdr.addEventListener('click',()=>draftReply(S.selectedEmail));
   const bmr=document.getElementById('btnManualReply');if(bmr)bmr.addEventListener('click',()=>{S.composingReply=S.selectedEmail;S.replyDraft='';render();setTimeout(()=>{const ta=document.getElementById('replyArea');if(ta)ta.focus();},50);});
-  const bsr=document.getElementById('btnSendReply');if(bsr)bsr.addEventListener('click',()=>sendReply(S.selectedEmail));
-  const bte=document.getElementById('btnTrashEmail');if(bte)bte.addEventListener('click',()=>trashEmail(S.selectedEmail));
+  const bsr=document.getElementById('btnSendReply');if(bsr)bsr.addEventListener('click',()=>{if(S.selectedEmail?.source==='despatch')sendOutlookReply(S.selectedEmail);else sendReply(S.selectedEmail);});
+  const bte=document.getElementById('btnTrashEmail');if(bte)bte.addEventListener('click',()=>{if(S.selectedEmail?.source==='despatch')trashOutlookEmail(S.selectedEmail);else trashEmail(S.selectedEmail);});
   const bce=document.getElementById('btnCloseEmail');if(bce)bce.addEventListener('click',()=>{S.selectedEmail=null;S.composingReply=null;render();});
   const bbl=document.getElementById('btnBackToList');if(bbl)bbl.addEventListener('click',()=>{S.selectedEmail=null;S.composingReply=null;render();});
   const bcr=document.getElementById('btnCancelReply');if(bcr)bcr.addEventListener('click',()=>{S.composingReply=null;render();});
@@ -1913,6 +2159,15 @@ if(isSetup()){
     console.log('[Denise] Found cached token, auto-loading Gmail + Calendar');
     fetchEmails(); // getGoogleToken() inside will validate & use the cached token
   }
+  // Auto-load Outlook if we have an MSAL account cached
+  setTimeout(()=>{
+    if(getMsalInstance()?.getAllAccounts().length>0){
+      console.log('[Denise] Found cached MS account, auto-loading Outlook');
+      fetchOutlookEmails();
+      fetchOutlookCalendar();
+      fetchOutlookCalendarWeek();
+    }
+  }, 1000); // slight delay to let MSAL.js initialise
 }
 </script>
 </body>
