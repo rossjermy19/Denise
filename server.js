@@ -350,6 +350,34 @@ app.get("/api/gmail/debug", async (req, res) => {
 ${xml.slice(0, 2000)}`);
 });
 
+// ── Claude API proxy ──────────────────────────────────────────────────
+app.post("/api/claude", async (req, res) => {
+  if (!ANTHROPIC_API_KEY) return res.status(400).json({ error: "ANTHROPIC_API_KEY not set" });
+  try {
+    const { system, messages, model, max_tokens } = req.body;
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: model || "claude-sonnet-4-20250514",
+        max_tokens: max_tokens || 1500,
+        system: system || "",
+        messages: messages || []
+      })
+    });
+    const data = await response.json();
+    if (data.error) return res.status(400).json({ error: data.error.message || JSON.stringify(data.error) });
+    res.json(data);
+  } catch (e) {
+    console.error("Claude proxy error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/webhook/pocket", (req, res) => res.json({ ok: true }));
 app.get("/health", (req, res) => res.json({ ok: true }));
 app.get("/", (req, res) => {

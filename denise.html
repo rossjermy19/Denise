@@ -321,9 +321,9 @@ function initials(c){return(c.speakers?.[0]?.slice(0,2)||c.title?.slice(0,2)||'?
 function fmtDate(d){try{return new Date(d).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});}catch{return'';}}
 function fmtEmailDate(d){if(!d)return'';const dt=new Date(d),now=new Date(),diff=now-dt;if(diff<86400000)return dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});if(diff<604800000)return dt.toLocaleDateString('en-GB',{weekday:'short'});return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'});}
 
-async function callClaude(system,msg){
-  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,system,messages:[{role:'user',content:msg}]})});
-  const d=await res.json();return d.content?.[0]?.text||'No response.';
+async function callClaude(system,msg,opts={}){
+  const res=await fetch(`${API()}/api/claude`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system,messages:[{role:'user',content:msg}],model:opts.model||'claude-sonnet-4-20250514',max_tokens:opts.max_tokens||1500})});
+  const d=await res.json();if(d.error)throw new Error(d.error);return d.content?.[0]?.text||'No response.';
 }
 
 async function callClaudeMCP(system,msg,mcpServers){
@@ -426,16 +426,50 @@ async function generateAlerts(){
   try{
     const emailCtx=S.emails.slice(0,20).map((e,i)=>`${i+1}. From: ${e.from_name||e.from_email} <${e.from_email}> | Subject: ${e.subject} | Preview: ${e.snippet} | Unread: ${e.is_unread}`).join('\n');
     const reply=await callClaude(
-      'You are Denise, PA for Ross Jermy at Moov Parcel (UK shipping logistics). Analyse these emails and identify which ones need a reply — direct questions, requests, client/supplier emails awaiting action, anything requiring a decision. Return ONLY valid JSON with no other text: {"needsReply":[1,3,5],"alerts":[{"type":"email","title":"string max 8 words","reason":"string max 15 words","email_index":1,"priority":"high"}]}. needsReply is an array of 1-based email indexes. alerts contains up to 5 most urgent items.',
+      `You are Denise, PA for Ross Jermy at Moov Parcel / Nino Logistics (UK shipping logistics).
+
+Your job: scan Ross's inbox and identify ONLY emails that require his personal action. Be aggressive about filtering noise.
+
+IGNORE completely (never flag these):
+- Newsletters, marketing emails, promotional offers
+- Automated notifications (GitHub, Slack, Jira, Railway, Vercel, CI/CD, server alerts)
+- Order confirmations, shipping notifications, receipts
+- Social media notifications
+- Calendar invites that are informational only
+- CC'd emails where Ross isn't directly addressed
+- Read emails that have already been dealt with
+- Spam or bulk mail
+- No-reply addresses
+- Generic company announcements
+
+ONLY FLAG these as needing action:
+- Direct questions to Ross requiring a response
+- Client or supplier emails asking for a decision or information
+- Requests with deadlines or time pressure
+- Escalations or urgent operational issues
+- Emails from Ross's team needing approval or input
+- Meeting requests that need acceptance/decline
+- Financial matters needing review (invoices needing approval, etc.)
+
+For each flagged email, assess priority:
+- "urgent": time-sensitive, client-facing, or blocking someone
+- "high": needs a reply today but not immediately
+- "medium": should reply within a few days
+
+Return ONLY valid JSON, no markdown, no explanation:
+{"needsReply":[1,3],"alerts":[{"type":"email","title":"string max 8 words","reason":"string max 15 words","email_index":1,"priority":"urgent|high|medium"}]}
+
+needsReply = array of 1-based email indexes. alerts = up to 5 most important items sorted by priority. If NO emails need action, return {"needsReply":[],"alerts":[]}.`,
       `Emails:\n${emailCtx}`
     );
     const clean=reply.replace(/```json|```/g,'').trim();
     const match=clean.match(/\{[\s\S]*\}/);
     if(match){
       const parsed=JSON.parse(match[0]);
-      // Mark needsReply on email objects
-      S.emails.forEach((e,i)=>{ e.needsReply=false; });
+      S.emails.forEach((e,i)=>{ e.needsReply=false; e.alertPriority=null; });
       (parsed.needsReply||[]).forEach(idx=>{ if(S.emails[idx-1]) S.emails[idx-1].needsReply=true; });
+      // Attach priority from alerts to email objects
+      (parsed.alerts||[]).forEach(a=>{ if(S.emails[a.email_index-1]) S.emails[a.email_index-1].alertPriority=a.priority; });
       S.emailAlerts=parsed.alerts||[];
     }
   }catch(e){console.error('Alerts:',e);S.emailAlerts=[];}
@@ -446,8 +480,30 @@ async function draftReply(email){
   S.composingReply=email;S.replyDraft='Drafting reply...';render();
   try{
     const draft=await callClaude(
-      'Draft a professional, concise email reply for Ross at Nino Logistics/Moov Parcel UK. Return only the email body text.',
-      `Draft reply to:\nFrom: ${email.from_name||email.from_email}\nSubject: ${email.subject}\nContent: ${email.body||email.snippet}`
+      `You are drafting an email reply on behalf of Ross Jermy, who runs operations at Nino Logistics / Moov Parcel UK (shipping & logistics).
+
+ROSS'S WRITING STYLE:
+- Friendly but professional — never stiff or corporate
+- Gets straight to the point, no waffle
+- Uses casual British English ("cheers", "thanks", "no worries", "happy to")
+- Short paragraphs, often just 1-2 sentences each
+- Signs off with "Cheers," or "Thanks," followed by "Ross"
+- Occasionally uses "!" for warmth but not excessively
+- Direct about timelines and next steps
+- Acknowledges the other person's point before responding
+- Never uses jargon unnecessarily
+- Warm with clients, slightly more casual with internal team
+
+RULES:
+- Return ONLY the email body text — no subject line, no "Re:", no metadata
+- Keep it concise — most replies should be 2-6 sentences
+- Include a clear next step or answer to their question
+- Match the formality level of the incoming email
+- End with "Cheers,\nRoss" or "Thanks,\nRoss"
+- If the email requires information Ross would need to check, say so naturally (e.g., "Let me check on this and get back to you today")
+- Never make up specific figures, dates, or commitments Ross hasn't confirmed`,
+      `Draft a reply to this email:\n\nFrom: ${email.from_name||email.from_email} <${email.from_email}>\nSubject: ${email.subject}\nContent: ${email.body||email.snippet}`,
+      {max_tokens: 800}
     );
     S.replyDraft=draft;
   }catch{S.replyDraft='';}
@@ -649,22 +705,20 @@ function renderDash(){
 }
 
 function renderDashTab(overdue,unread){
-  const needsReply = S.emails.filter(e=>e.is_unread||e.needsReply).sort((a,b)=>{
-    // Sort: needsReply first, then unread, then rest
-    if(a.needsReply&&!b.needsReply)return -1;
-    if(!a.needsReply&&b.needsReply)return 1;
-    if(a.is_unread&&!b.is_unread)return -1;
-    if(!a.is_unread&&b.is_unread)return 1;
-    return 0;
+  // Only show emails that genuinely need action — no spam, no noise
+  const needsReply = S.emails.filter(e=>e.needsReply).sort((a,b)=>{
+    const pOrder={urgent:0,high:1,medium:2};
+    const pa=pOrder[a.alertPriority]??3, pb=pOrder[b.alertPriority]??3;
+    return pa-pb;
   });
-  const hi=S.emailAlerts.filter(a=>a.priority==='high');
+  const hi=S.emailAlerts.filter(a=>a.priority==='urgent'||a.priority==='high');
 
   return `
   <!-- 4 stat tiles -->
   <div class="stats">
     <div class="stat"><div class="slbl">Pocket tasks</div><div class="sval" style="color:var(--accent)">${S.stats.open||0}</div></div>
     <div class="stat"><div class="slbl">Overdue</div><div class="sval" style="color:var(--danger)">${overdue||0}</div></div>
-    <div class="stat"><div class="slbl">Unread emails</div><div class="sval" style="color:var(--teal)">${unread}</div></div>
+    <div class="stat"><div class="slbl">Emails to action</div><div class="sval" style="color:${needsReply.length>0?'var(--danger)':'var(--teal)'}">${needsReply.length}</div></div>
     <div class="stat"><div class="slbl">Recordings</div><div class="sval" style="color:var(--purple)">${S.stats.totalCalls||0}</div></div>
   </div>
 
@@ -693,13 +747,16 @@ function renderDashTab(overdue,unread){
       `:`
         ${needsReply.map((e,i)=>{
           const origIdx=S.emails.indexOf(e);
-          const urgent=e.needsReply;
+          const p=e.alertPriority||'medium';
+          const pColors={urgent:['var(--danger)','var(--danger-dim)','var(--danger-text)'],high:['var(--warn)','var(--warn-dim)','var(--warn-text)'],medium:['var(--accent)','var(--accent-dim)','var(--accent)']};
+          const [stripe,bg,fg]=pColors[p]||pColors.medium;
+          const pLabels={urgent:'⚡ Urgent',high:'↩ Reply today',medium:'📋 Action needed'};
           return`<div class="priority-email" data-email="${origIdx}">
-            <div class="priority-stripe" style="background:${urgent?'var(--danger)':'var(--accent)'}"></div>
+            <div class="priority-stripe" style="background:${stripe}"></div>
             <div class="priority-email-body">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-                <span class="priority-label" style="background:${urgent?'var(--danger-dim)':'var(--accent-light)'};color:${urgent?'var(--danger-text)':'var(--accent)'}">
-                  ${urgent?'↩ Reply needed':'● Unread'}
+                <span class="priority-label" style="background:${bg};color:${fg}">
+                  ${pLabels[p]||'↩ Reply needed'}
                 </span>
               </div>
               <div class="priority-from">${esc(e.from_name||e.from_email)}</div>
