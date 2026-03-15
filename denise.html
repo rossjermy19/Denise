@@ -566,9 +566,10 @@ async function fetchEmails(){
 
     S.emails = threadDetails
       .filter(t => {
-        // Skip threads where all messages are trashed/spam
-        const allLabels = (t.messages || []).flatMap(m => m.labelIds || []);
-        if(allLabels.includes('TRASH') || allLabels.includes('SPAM')) return false;
+        // Skip threads where the LATEST message is trashed/spam (not just any message)
+        const msgs = t.messages || [];
+        const latestLabels = msgs[msgs.length - 1]?.labelIds || [];
+        if(latestLabels.includes('TRASH') || latestLabels.includes('SPAM')) return false;
         return true;
       })
       .map(t => {
@@ -757,7 +758,11 @@ async function generateAlerts(){
         return full?.body?.slice(0,500) || e.snippet || '';
       }catch{ return e.snippet || ''; }
     }));
-    const emailCtx=emailsToScan.map((e,i)=>`${i+1}. From: ${e.from_name||e.from_email} <${e.from_email}> | Subject: ${e.subject} | Thread messages: ${e.msgCount||1} | Unread: ${e.is_unread}\nLatest message:\n${bodies[i]}`).join('\n---\n');
+    const isRoss = addr => /ross\.?jermy/i.test(addr) || /ross/i.test(addr.split('<')[0]||'');
+    const emailCtx=emailsToScan.map((e,i)=>{
+      const selfSent = isRoss(e.from_email||'') && e.msgCount <= 1;
+      return `${i+1}. From: ${e.from_name||e.from_email} <${e.from_email}>${selfSent?' [SELF-SENT REMINDER]':''} | Subject: ${e.subject} | Thread messages: ${e.msgCount||1} | Unread: ${e.is_unread}\nLatest message:\n${bodies[i]}`;
+    }).join('\n---\n');
     console.log('[Denise] Triage input — emails with bodies:', emailsToScan.map((e,i) => `${i+1}. ${e.from_name}: "${e.subject}" (body: ${bodies[i]?.length||0} chars)`).join('\n'));
     const reply=await callClaude(
       `You are Denise, PA for Ross Jermy at Moov Parcel / Nino Logistics (UK shipping logistics).
@@ -772,18 +777,23 @@ NEVER flag (regardless of subject line):
 - Order confirmations, receipts, shipping updates
 - Social media notifications, calendar auto-updates
 - CC'd emails where Ross isn't directly asked something
-- Threads where the latest message is FROM Ross (he already replied — conversation ball is in their court)
 - Threads where the latest message is just "thanks", "cheers", "noted", "will do" etc. (conversation is done)
-- FYI/informational emails with no question or request
+- FYI/informational emails with no question, request, or deadline
 - Spam, no-reply addresses, generic company announcements
-- Read emails with no new action required
+- Threads where the latest message is FROM Ross replying to someone else (ball is in their court)
 
-ONLY flag if the latest message CLEARLY contains one of these:
+IMPORTANT EXCEPTIONS — DO flag these even though they are from Ross:
+- Self-sent reminders or to-do items (Ross emailing himself, e.g. "Sort PayPal", "Chase invoice") — these are action items Ross created for himself
+- Forwarded emails with deadlines or time-sensitive content (e.g. "Fwd: IMPORTANT - expiring soon") — Ross forwarded these to himself to act on
+
+ONLY flag if:
 - A direct question to Ross needing his answer ("can you confirm...", "what do you think about...")
 - A request for a decision, approval, or sign-off ("please approve", "need your OK on...")
-- A deadline or time-sensitive ask ("by end of day", "urgent", "ASAP", "waiting on you")
+- A deadline or time-sensitive ask (dates, "by end of day", "urgent", "ASAP", "expiring", "waiting on you")
 - A client/supplier explicitly waiting for Ross to provide something
 - An escalation needing Ross's input to unblock
+- Ross sent himself a reminder/to-do (short subject with action verb like "sort", "chase", "call", "book")
+- A forwarded email with a deadline or action required
 
 Priority:
 - "urgent": blocking someone, client-facing deadline, needs response within hours
