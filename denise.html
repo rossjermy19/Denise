@@ -179,6 +179,35 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .voice-label{font-family:var(--fd);font-size:11px;color:var(--purple);font-weight:500;text-transform:uppercase;letter-spacing:0.05em}
 .voice-bar.listening .voice-label{color:var(--danger)}
 
+/* ── Calendar week strip ── */
+.cal-strip{display:flex;gap:4px;padding:10px 18px}
+.cal-day{flex:1;text-align:center;padding:8px 4px;border-radius:var(--r);cursor:pointer;transition:all .15s;border:1px solid transparent;min-width:0}
+.cal-day:hover{background:var(--accent-dim);border-color:var(--accent-mid)}
+.cal-day.today{border-color:var(--accent);background:var(--accent-dim)}
+.cal-day-name{font-family:var(--fd);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em}
+.cal-day-num{font-size:18px;font-weight:700;font-family:var(--fb);line-height:1.3;color:var(--text)}
+.cal-day.today .cal-day-num{color:var(--accent)}
+.cal-day-dots{display:flex;gap:3px;justify-content:center;margin-top:4px;min-height:6px}
+.cal-day-dot{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+
+/* Calendar popup overlay */
+.cal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .15s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.cal-popup{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);width:100%;max-width:480px;max-height:80vh;overflow-y:auto;animation:popUp .2s}
+@keyframes popUp{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+.cal-popup-hdr{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid var(--border-light)}
+.cal-popup-title{font-family:var(--fb);font-size:16px;font-weight:700;color:var(--text)}
+.cal-popup-close{width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .15s}
+.cal-popup-close:hover{background:var(--bg);color:var(--text)}
+.cal-popup-ev{display:flex;align-items:flex-start;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border-light)}
+.cal-popup-ev:last-child{border-bottom:none}
+.cal-popup-time{font-family:var(--fd);font-size:12px;color:var(--accent);min-width:50px;font-weight:500;padding-top:1px}
+.cal-popup-info{flex:1;min-width:0}
+.cal-popup-name{font-size:14px;font-weight:500;color:var(--text)}
+.cal-popup-loc{font-size:12px;color:var(--muted);margin-top:2px}
+.cal-popup-att{font-size:11px;color:var(--muted);margin-top:2px}
+.cal-popup-join{font-size:11px;font-family:var(--fd);color:var(--accent);text-decoration:none;flex-shrink:0;padding-top:2px}
+
 /* ── Dashboard briefing grid ── */
 .briefing-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
 @media(max-width:640px){.briefing-grid{grid-template-columns:1fr}}
@@ -445,6 +474,7 @@ const S={
   composingReply:null,replyDraft:'',sendSuccess:null,
   cuTasks:[],cuLoading:false,cuCompleted:{},
   calEvents:[],calLoading:false,calDayOffset:0,calError:null,
+  calWeek:{},calWeekLoading:false,calPopupDay:null,calPopupEvents:[],calPopupLoading:false,
   weather:null,weatherLoading:false,
   voiceListening:false,voiceMode:null,voiceTranscript:'',voiceSpeaking:false,
   messages:[{role:'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket and Gmail. Ask me what needs your attention today, or anything else."}],
@@ -888,7 +918,7 @@ async function fetchEmails(){
   S.emailsLoading = false; render();
   if(S.emails.length > 0 && !S.alertsGenerated) generateAlerts();
   // Also fetch calendar now we have a Google token
-  if(window._gTok && S.calEvents.length === 0) fetchCalendar();
+  if(window._gTok && S.calEvents.length === 0){ fetchCalendar(); fetchCalendarWeek(); }
 }
 
 async function fetchEmailBody(emailId){
@@ -993,6 +1023,40 @@ async function fetchCalendar(){
       });
   }catch(e){ console.error('[Denise] Calendar fetch failed:', e); }
   S.calLoading=false; render();
+}
+
+async function fetchCalendarWeek(){
+  S.calWeekLoading=true; render();
+  try{
+    // Fetch event counts for next 7 days (today + 6)
+    const results = {};
+    await Promise.all([0,1,2,3,4,5,6].map(async offset => {
+      const events = await fetchCalendarForDay(offset);
+      const d = new Date(); d.setDate(d.getDate()+offset);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      results[key] = events.length;
+    }));
+    S.calWeek = results;
+  }catch(e){ console.error('[Denise] Week calendar failed:', e); }
+  S.calWeekLoading=false; render();
+}
+
+async function openCalendarDay(offset){
+  const d = new Date(); d.setDate(d.getDate()+offset);
+  S.calPopupDay = { offset, date: d };
+  S.calPopupLoading = true;
+  S.calPopupEvents = [];
+  render();
+  const events = await fetchCalendarForDay(offset);
+  S.calPopupEvents = events;
+  S.calPopupLoading = false;
+  render();
+}
+
+function closeCalendarPopup(){
+  S.calPopupDay = null;
+  S.calPopupEvents = [];
+  render();
 }
 
 async function fetchWeather(){
@@ -1470,36 +1534,24 @@ function renderDashTab(overdue,unread){
         </div>`:
         `<div style="padding:14px 18px;font-size:13px;color:var(--muted)">Weather loading on page load...</div>`}
     </div>
-    <!-- Diary with day navigation -->
+    <!-- Diary — compact week strip -->
     <div class="card">
-      <div class="chdr">
-        <div style="display:flex;align-items:center;gap:8px">
-          <button class="cal-nav" id="btnCalPrev" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s" ${S.calDayOffset<=0?'disabled style="opacity:0.3;cursor:default;width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);display:flex;align-items:center;justify-content:center;font-size:14px"':''}>‹</button>
-          <span class="ctitle">${(()=>{
-            const d=new Date();d.setDate(d.getDate()+S.calDayOffset);
-            if(S.calDayOffset===0) return "Today's diary";
-            if(S.calDayOffset===1) return "Tomorrow";
-            return d.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'});
-          })()}</span>
-          <button class="cal-nav" id="btnCalNext" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s">›</button>
-          ${S.calDayOffset!==0?`<button id="btnCalToday" style="padding:3px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--accent);font-size:11px;font-family:var(--fd);cursor:pointer">Today</button>`:''}
-        </div>
-        ${S.calEvents.length>0?`<span class="bdg ba">${S.calEvents.length} event${S.calEvents.length>1?'s':''}</span>`:''}
-      </div>
-      ${S.calLoading?`<div class="ldr"><div class="spinner"></div>Loading calendar...</div>`:
-        S.calEvents.length>0?S.calEvents.map(ev=>`
-          <div class="erow" style="padding:8px 18px;gap:10px">
-            <div style="font-family:var(--fd);font-size:12px;color:var(--accent);min-width:52px;flex-shrink:0;font-weight:500">${esc(ev.startStr)}</div>
-            <div class="einfo">
-              <div class="esender" style="font-size:13px">${esc(ev.title)}</div>
-              ${ev.location?`<div class="esubj" style="font-size:11px">${esc(ev.location)}</div>`:''}
-              ${ev.attendees.length>0?`<div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(ev.attendees.slice(0,3).join(', '))}${ev.attendees.length>3?' +' + (ev.attendees.length-3):''}</div>`:''}
-            </div>
-            ${ev.hangoutLink?`<a href="${esc(ev.hangoutLink)}" target="_blank" style="font-size:11px;font-family:var(--fd);color:var(--accent);text-decoration:none;flex-shrink:0">Join ↗</a>`:''}
-            ${ev.endStr?`<div style="font-family:var(--fd);font-size:11px;color:var(--muted);flex-shrink:0">${esc(ev.endStr)}</div>`:''}
-          </div>`).join(''):
-        S.calError?`<div style="padding:14px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:6px">${esc(S.calError)}</div><a href="https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=597561744602" target="_blank" style="font-size:12px;color:var(--accent)">Open Google Cloud Console ↗</a></div>`:
-        `<div style="padding:14px 18px;font-size:13px;color:var(--muted)">${window._gTok?'Nothing in the diary — clear day!':'Load Gmail to connect your calendar.'}</div>`}
+      <div class="chdr"><span class="ctitle">This week</span>${S.calWeekLoading?'<div class="spinner" style="width:12px;height:12px"></div>':''}</div>
+      ${window._gTok?`<div class="cal-strip">
+        ${[0,1,2,3,4,5,6].map(offset => {
+          const d=new Date();d.setDate(d.getDate()+offset);
+          const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const count=S.calWeek[key]||0;
+          const dayName=d.toLocaleDateString('en-GB',{weekday:'short'}).slice(0,3);
+          return `<div class="cal-day${offset===0?' today':''}" data-cal-offset="${offset}">
+            <div class="cal-day-name">${dayName}</div>
+            <div class="cal-day-num">${d.getDate()}</div>
+            <div class="cal-day-dots">${Array(Math.min(count,4)).fill('<div class="cal-day-dot"></div>').join('')}</div>
+          </div>`;
+        }).join('')}
+      </div>`:
+      S.calError?`<div style="padding:14px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:6px">${esc(S.calError)}</div><a href="https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=597561744602" target="_blank" style="font-size:12px;color:var(--accent)">Open Google Cloud Console ↗</a></div>`:
+      `<div style="padding:14px 18px;font-size:13px;color:var(--muted)">Load Gmail to connect your calendar.</div>`}
     </div>
   </div>
 
@@ -1565,7 +1617,35 @@ function renderDashTab(overdue,unread){
         </div>`;
       }).join('')}
     `}
-  </div>`;
+  </div>
+
+  ${S.calPopupDay?`
+  <div class="cal-overlay" id="calOverlay">
+    <div class="cal-popup">
+      <div class="cal-popup-hdr">
+        <div class="cal-popup-title">${(()=>{
+          const d=S.calPopupDay.date;
+          if(S.calPopupDay.offset===0) return "Today's diary";
+          if(S.calPopupDay.offset===1) return "Tomorrow";
+          return d.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+        })()}</div>
+        <button class="cal-popup-close" id="btnCalClose">✕</button>
+      </div>
+      ${S.calPopupLoading?`<div class="ldr"><div class="spinner"></div>Loading events...</div>`:
+        S.calPopupEvents.length>0?S.calPopupEvents.map(ev=>`
+          <div class="cal-popup-ev">
+            <div class="cal-popup-time">${esc(ev.startStr)}</div>
+            <div class="cal-popup-info">
+              <div class="cal-popup-name">${esc(ev.title)}</div>
+              ${ev.location?`<div class="cal-popup-loc">${esc(ev.location)}</div>`:''}
+              ${ev.attendees.length>0?`<div class="cal-popup-att">${esc(ev.attendees.slice(0,5).join(', '))}</div>`:''}
+            </div>
+            ${ev.hangoutLink?`<a href="${esc(ev.hangoutLink)}" target="_blank" class="cal-popup-join">Join ↗</a>`:''}
+          </div>`).join(''):
+        `<div style="padding:20px;text-align:center;font-size:13px;color:var(--muted)">Nothing in the diary — clear day!</div>`}
+    </div>
+  </div>`:''}
+  `;
 }
 
 
@@ -1756,9 +1836,12 @@ function bindEvents(){
   document.querySelectorAll('[data-call]').forEach(r=>{r.addEventListener('click',()=>{const c=S.calls.find(x=>x.id===r.dataset.call);S.selectedCall=S.selectedCall?.id===r.dataset.call?null:c;render();});});
   document.querySelectorAll('[data-delete]').forEach(b=>{b.addEventListener('click',e=>{e.stopPropagation();deleteCall(b.dataset.delete);});});
   // Calendar nav
-  const bcp=document.getElementById('btnCalPrev');if(bcp)bcp.addEventListener('click',()=>{if(S.calDayOffset>0){S.calDayOffset--;fetchCalendar();}});
-  const bcn=document.getElementById('btnCalNext');if(bcn)bcn.addEventListener('click',()=>{S.calDayOffset++;fetchCalendar();});
-  const bct=document.getElementById('btnCalToday');if(bct)bct.addEventListener('click',()=>{S.calDayOffset=0;fetchCalendar();});
+  // Calendar week strip — click a day to open popup
+  document.querySelectorAll('[data-cal-offset]').forEach(el=>{
+    el.addEventListener('click',()=>openCalendarDay(parseInt(el.dataset.calOffset)));
+  });
+  const bcc=document.getElementById('btnCalClose');if(bcc)bcc.addEventListener('click',closeCalendarPopup);
+  const cov=document.getElementById('calOverlay');if(cov)cov.addEventListener('click',(e)=>{if(e.target===cov)closeCalendarPopup();});
   // Gmail
   const ble=document.getElementById('btnLoadEmail');if(ble)ble.addEventListener('click',fetchEmails);
   const ble2=document.getElementById('btnLoadEmail2');if(ble2)ble2.addEventListener('click',fetchEmails);
