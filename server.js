@@ -351,33 +351,62 @@ ${xml.slice(0, 2000)}`);
 });
 
 // ── Outlook integration ──────────────────────────────────────────────
-// Emails: forwarded from Outlook to Gmail via rule, detected by To/Delivered-To header
-// Calendar: fetched directly from published ICS feed (no admin needed)
+// Calendar: fetched from published ICS feed, cached in memory for speed
 import ical from "node-ical";
+
+// ICS cache — refreshed every 5 minutes in background
+let _icsCache = null;   // parsed ical data
+let _icsCacheTime = 0;  // timestamp of last fetch
+const ICS_CACHE_MS = 5 * 60 * 1000; // 5 minutes
+
+async function getIcsData() {
+  const icsUrl = process.env.OUTLOOK_ICS_URL;
+  if (!icsUrl) return null;
+  const now = Date.now();
+  if (_icsCache && (now - _icsCacheTime) < ICS_CACHE_MS) return _icsCache;
+  try {
+    console.log("[Outlook ICS] Fetching fresh calendar data...");
+    _icsCache = await ical.async.fromURL(icsUrl);
+    _icsCacheTime = Date.now();
+    const eventCount = Object.values(_icsCache).filter(ev => ev.type === "VEVENT").length;
+    console.log(`[Outlook ICS] Cached ${eventCount} events`);
+    return _icsCache;
+  } catch (e) {
+    console.error("[Outlook ICS] Fetch failed:", e.message);
+    return _icsCache; // return stale cache if available
+  }
+}
+
+// Pre-warm cache on startup
+setTimeout(() => { if (process.env.OUTLOOK_ICS_URL) getIcsData(); }, 2000);
+// Refresh cache every 5 minutes
+setInterval(() => { if (process.env.OUTLOOK_ICS_URL) getIcsData(); }, ICS_CACHE_MS);
+
+function filterEventsForDay(data, dayOffset) {
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+  const endOfDay = new Date(target); endOfDay.setDate(endOfDay.getDate() + 1);
+  return Object.values(data)
+    .filter(ev => ev.type === "VEVENT")
+    .filter(ev => {
+      const start = ev.start ? new Date(ev.start) : null;
+      if (!start) return false;
+      return start >= target && start < endOfDay;
+    });
+}
 
 app.get("/api/outlook/status", (req, res) => {
   const icsUrl = process.env.OUTLOOK_ICS_URL || "";
   res.json({ configured: !!icsUrl, user: "ross.jermy@thedespatchcompany.com" });
 });
 
-// Outlook calendar via ICS feed
+// Outlook calendar — instant from cache
 app.get("/api/outlook/calendar", async (req, res) => {
-  const icsUrl = process.env.OUTLOOK_ICS_URL;
-  if (!icsUrl) return res.status(400).json({ error: "Set OUTLOOK_ICS_URL in Railway env vars." });
+  const data = await getIcsData();
+  if (!data) return res.status(400).json({ error: "Set OUTLOOK_ICS_URL in Railway env vars." });
   try {
-    const data = await ical.async.fromURL(icsUrl);
-    const now = new Date();
     const dayOffset = parseInt(req.query.dayOffset || "0");
-    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
-    const endOfDay = new Date(target); endOfDay.setDate(endOfDay.getDate() + 1);
-
-    const events = Object.values(data)
-      .filter(ev => ev.type === "VEVENT")
-      .filter(ev => {
-        const start = ev.start ? new Date(ev.start) : null;
-        if (!start) return false;
-        return start >= target && start < endOfDay;
-      })
+    const events = filterEventsForDay(data, dayOffset)
       .map(ev => {
         const start = new Date(ev.start);
         const allDay = ev.datetype === "date";
@@ -393,7 +422,6 @@ app.get("/api/outlook/calendar", async (req, res) => {
         };
       })
       .sort((a, b) => a.startStr.localeCompare(b.startStr));
-
     res.json({ events });
   } catch (e) {
     console.error("[Outlook ICS]", e.message);
@@ -401,24 +429,17 @@ app.get("/api/outlook/calendar", async (req, res) => {
   }
 });
 
-// Outlook calendar week summary (event counts per day)
+// Outlook calendar week summary — instant from cache
 app.get("/api/outlook/calendar/week", async (req, res) => {
-  const icsUrl = process.env.OUTLOOK_ICS_URL;
-  if (!icsUrl) return res.json({ week: {} });
+  const data = await getIcsData();
+  if (!data) return res.json({ week: {} });
   try {
-    const data = await ical.async.fromURL(icsUrl);
-    const now = new Date();
     const week = {};
     for (let i = 0; i < 7; i++) {
+      const now = new Date();
       const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-      const endOfDay = new Date(target); endOfDay.setDate(endOfDay.getDate() + 1);
       const key = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`;
-      week[key] = Object.values(data)
-        .filter(ev => ev.type === "VEVENT")
-        .filter(ev => {
-          const start = ev.start ? new Date(ev.start) : null;
-          return start && start >= target && start < endOfDay;
-        }).length;
+      week[key] = filterEventsForDay(data, i).length;
     }
     res.json({ week });
   } catch (e) {
