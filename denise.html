@@ -348,37 +348,53 @@ async function callClaudeMCP(system,msg,mcpServers){
   return (d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
 }
 
+// Clear any stale tokens from scope change
+(function(){
+  const v = localStorage.getItem('pa_gmail_scope_v');
+  if(v !== '2'){ localStorage.removeItem('pa_gmail_token'); localStorage.removeItem('pa_gmail_token_exp'); localStorage.removeItem('pa_gmail_send_token'); localStorage.removeItem('pa_gmail_send_token_exp'); localStorage.setItem('pa_gmail_scope_v','2'); }
+})();
+
+function getGmailToken(scope){
+  const isRead = scope.includes('readonly');
+  const tokKey = isRead ? 'pa_gmail_token' : 'pa_gmail_send_token';
+  const expKey = isRead ? 'pa_gmail_token_exp' : 'pa_gmail_send_token_exp';
+  const memTok = isRead ? '_gTok' : '_gSendTok';
+  const memExp = isRead ? '_gExp' : '_gSendExp';
+
+  return new Promise((resolve, reject) => {
+    // Check in-memory cache first, then localStorage
+    if(window[memTok] && window[memExp] > Date.now()){ resolve(window[memTok]); return; }
+    const savedTok = localStorage.getItem(tokKey);
+    const savedExp = parseInt(localStorage.getItem(expKey) || '0');
+    if(savedTok && savedExp > Date.now()){
+      window[memTok] = savedTok;
+      window[memExp] = savedExp;
+      resolve(savedTok);
+      return;
+    }
+    if(!window.google || !window.google.accounts){ reject(new Error('Google sign-in loading, try again in a moment')); return; }
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: '597561744602-3pmav3dbg17itvh5d7kgr1ddil9ii548.apps.googleusercontent.com',
+      scope: scope,
+      callback: (resp) => {
+        if(resp.error){ reject(new Error(resp.error)); return; }
+        window[memTok] = resp.access_token;
+        window[memExp] = Date.now() + 3500000;
+        localStorage.setItem(tokKey, resp.access_token);
+        localStorage.setItem(expKey, String(window[memExp]));
+        resolve(resp.access_token);
+      },
+      error_callback: (err) => reject(new Error(err.type + ': ' + (err.message||'')))
+    });
+    client.requestAccessToken();
+  });
+}
+
 async function fetchEmails(){
   S.emailsLoading=true;S.emailsError=null;render();
   try{
     // Get OAuth token via Google Identity Services (persisted in localStorage)
-    const token = await new Promise((resolve, reject) => {
-      // Check in-memory cache first, then localStorage
-      if(window._gTok && window._gExp > Date.now()){ resolve(window._gTok); return; }
-      const savedTok = localStorage.getItem('pa_gmail_token');
-      const savedExp = parseInt(localStorage.getItem('pa_gmail_token_exp') || '0');
-      if(savedTok && savedExp > Date.now()){
-        window._gTok = savedTok;
-        window._gExp = savedExp;
-        resolve(savedTok);
-        return;
-      }
-      if(!window.google || !window.google.accounts){ reject(new Error('Google sign-in loading, try again in a moment')); return; }
-      const client = google.accounts.oauth2.initTokenClient({
-        client_id: '597561744602-3pmav3dbg17itvh5d7kgr1ddil9ii548.apps.googleusercontent.com',
-        scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
-        callback: (resp) => {
-          if(resp.error){ reject(new Error(resp.error)); return; }
-          window._gTok = resp.access_token;
-          window._gExp = Date.now() + 3500000;
-          localStorage.setItem('pa_gmail_token', resp.access_token);
-          localStorage.setItem('pa_gmail_token_exp', String(window._gExp));
-          resolve(resp.access_token);
-        },
-        error_callback: (err) => reject(new Error(err.type + ': ' + (err.message||'')))
-      });
-      client.requestAccessToken();
-    });
+    const token = await getGmailToken('https://www.googleapis.com/auth/gmail.readonly');
 
     // Find the Moov label ID (cache it)
     if(!window._moovLabelId){
@@ -437,7 +453,6 @@ async function fetchEmails(){
 
 async function fetchEmailBody(emailId){
   try{
-    // Use Gmail API directly with cached OAuth token
     const token = window._gTok || localStorage.getItem('pa_gmail_token');
     if(!token) return null;
     const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${emailId}?format=full`, {
@@ -571,8 +586,14 @@ async function sendReply(email){
   const body = replyArea?.value || S.replyDraft;
   if(!body || !body.trim()){ alert('Write a reply first'); return; }
 
-  const token = window._gTok || localStorage.getItem('pa_gmail_token');
-  if(!token){ alert('Gmail not connected — reload and sign in'); return; }
+  // Request send scope (separate from read scope — will prompt user if needed)
+  let token;
+  try{
+    token = await getGmailToken('https://www.googleapis.com/auth/gmail.send');
+  }catch(e){
+    alert('Gmail send permission needed — please approve the Google prompt');
+    return;
+  }
 
   // Build RFC 2822 email
   const to = email.from_email || email.from_name;
