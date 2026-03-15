@@ -225,7 +225,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .dav{width:40px;height:40px;border-radius:10px;background:var(--accent-dim);border:1px solid var(--accent-mid);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .dtitle{font-family:var(--fb);font-size:17px;font-weight:700}
 .delete-call-btn{opacity:0;transition:opacity .15s}
-.call-row:hover .delete-call-btn{opacity:1}
+.call-row:hover .delete-call-btn,.erow:hover .delete-call-btn{opacity:1}
 .g3{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:860px){.g3{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
 ::-webkit-scrollbar{width:4px;height:4px}
@@ -909,16 +909,13 @@ function renderDashTab(overdue,unread){
     </div>
     ${S.calls.length===0?`<div style="font-size:13px;color:var(--muted)">No recordings yet. Make a recording on your Pocket device.</div>`:`
       ${S.calls.slice(0,5).map(call=>{
-        const bg=['#E8F0FE','#FCE8F3','#E6F4EA','#FEF7E0','#F3E8FF'][Math.abs(call.title.charCodeAt(0))%5];
-        const fg=['#1A73E8','#D4006A','#188038','#E37400','#7B1FA2'][Math.abs(call.title.charCodeAt(0))%5];
-        const initials=(call.title||'?').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
-        return`<div class="call-row" data-call="${esc(call.id)}" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-light);cursor:pointer">
-          <div style="width:38px;height:38px;border-radius:10px;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0">${initials}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:14px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(call.title)}</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtDate(call.createdAt)}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div>
+        return`<div class="erow" data-call="${esc(call.id)}">
+          <div class="edot" style="background:var(--purple)"></div>
+          <div class="einfo">
+            <div class="esender">${esc(call.title)}</div>
+            <div class="esubj">${fmtDate(call.createdAt)}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div>
           </div>
-          ${call.bulletPoints?.length>0?`<span style="font-size:11px;font-family:var(--fd);padding:3px 8px;border-radius:20px;background:var(--teal-dim);color:var(--teal-text)">summary</span>`:`<span style="font-size:11px;font-family:var(--fd);padding:3px 8px;border-radius:20px;background:var(--bg);color:var(--muted)">no summary</span>`}
+          <div class="etime">${call.bulletPoints?.length>0?`<span class="bdg bt" style="font-size:10px">summary</span>`:`<span class="bdg" style="font-size:10px;background:var(--bg);color:var(--muted)">no summary</span>`}</div>
         </div>`;
       }).join('')}
     `}
@@ -1031,8 +1028,24 @@ function renderPocketTab(overdue){
   <div class="card">
     <div class="chdr"><span class="ctitle">Recordings</span><span class="bdg bp">${S.calls.length} total</span></div>
     ${S.calls.length===0?'<div style="font-size:13px;color:var(--muted)">No recordings yet.</div>':''}
-    ${S.calls.slice(0,8).map(call=>{const[fg,bg]=callColor(call.id),sel=S.selectedCall?.id===call.id;return`<div style="display:flex;align-items:center;gap:6px"><div class="rrow ${sel?'sel':''}" data-call="${esc(call.id)}" style="flex:1;${sel?`background:${bg};border-color:${fg}44`:''}"><div class="avtr" style="background:${bg};color:${fg}">${esc(initials(call))}</div><div class="rinfo"><div class="rname">${esc(call.title)}</div><div class="rsub">${esc(fmtDate(call.createdAt))}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div></div></div><button class="delete-call-btn" data-delete="${esc(call.id)}" style="flex-shrink:0;width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center" onmouseenter="this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--muted)'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/><path d="M9,6V4h6v2"/></svg></button></div>
-    ${sel?`<div class="rdet" style="border-left-color:${fg}"><div class="rdtitle" style="color:${fg}">${esc(call.title?.toUpperCase()||'')}</div>${call.bulletPoints?.length>0?call.bulletPoints.map(b=>`<div style="margin-bottom:3px">· ${esc(b)}</div>`).join(''):call.summary?`<div>${esc(call.summary)}</div>`:'<div>No summary yet.</div>'}${call.actionItems?.length>0?`<div class="rdsec">Action items</div>${call.actionItems.map(a=>`<div style="margin-bottom:2px">→ ${esc(a.title)}</div>`).join('')}`:''}${call.transcript?`<div class="rdsec" style="color:var(--accent-text)">Transcript</div><div class="rdtrans">${esc(call.transcript)}</div>`:''}</div>`:''}`;}).join('')}
+    ${S.calls.map(call=>{const sel=S.selectedCall?.id===call.id;return`<div class="erow ${sel?'sel':''}" data-call="${esc(call.id)}">
+        <div class="edot" style="background:var(--purple)"></div>
+        <div class="einfo">
+          <div class="esender">${esc(call.title)}</div>
+          <div class="esubj">${fmtDate(call.createdAt)}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${call.bulletPoints?.length>0?`<span class="bdg bt" style="font-size:10px">summary</span>`:`<span class="bdg" style="font-size:10px;background:var(--bg);color:var(--muted)">no summary</span>`}
+          <button class="delete-call-btn" data-delete="${esc(call.id)}" style="width:24px;height:24px;border-radius:5px;border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:all .15s" onmouseenter="this.style.opacity='1';this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseleave="this.style.opacity='0';this.style.borderColor='transparent';this.style.color='var(--muted)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/><path d="M9,6V4h6v2"/></svg></button>
+        </div>
+      </div>
+    ${sel?`<div class="det">
+        <div class="det-title">${esc(call.title)}</div>
+        <div class="det-meta">${fmtDate(call.createdAt)}${call.duration?` · ${Math.round(call.duration/60)} min`:''}</div>
+        ${call.bulletPoints?.length>0?`<div class="det-section"><div class="det-label">Summary</div>${call.bulletPoints.map(b=>`<div class="bullet">${esc(b)}</div>`).join('')}</div>`:call.summary?`<div class="det-section"><div class="det-label">Summary</div><div style="font-size:13px;color:var(--text2)">${esc(call.summary)}</div></div>`:'<div style="font-size:13px;color:var(--muted)">No summary yet.</div>'}
+        ${call.actionItems?.length>0?`<div class="det-section"><div class="det-label">Action items</div>${call.actionItems.map(a=>`<div class="bullet">${esc(a.title)}</div>`).join('')}</div>`:''}
+        ${call.transcript?`<div class="det-section"><div class="det-label">Transcript</div><div class="transcript-box">${esc(call.transcript)}</div></div>`:''}
+      </div>`:''}`;}).join('')}
   </div>
   </div>`;
 }
