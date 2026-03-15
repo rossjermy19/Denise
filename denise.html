@@ -146,6 +146,22 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .eact-btn:hover{border-color:var(--accent);color:var(--accent)}
 .eact-btn.primary{background:var(--accent);color:white;border-color:var(--accent)}
 
+/* ── Email buttons & compose ── */
+.ebtn{padding:8px 16px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:12px;font-family:var(--fb);font-weight:500;cursor:pointer;transition:all .15s}
+.ebtn:hover{border-color:var(--accent);color:var(--accent)}
+.ebtn.pri{background:var(--accent);color:white;border-color:var(--accent)}
+.ebtn.pri:hover{background:#1d4ed8}
+.ebtn.danger{background:var(--danger);color:white;border-color:var(--danger)}
+.compose{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);margin-top:14px;box-shadow:var(--shadow);overflow:hidden}
+.comphdr{padding:14px 18px 10px;font-size:13px;font-weight:600;color:var(--text);border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between}
+.compto{padding:8px 18px;font-size:12px;color:var(--muted);font-family:var(--fd);border-bottom:1px solid var(--border-light);display:flex;align-items:center;gap:8px}
+.compto span{color:var(--text);font-weight:500}
+.compa{width:100%;min-height:200px;padding:16px 18px;border:none;outline:none;font-size:14px;font-family:var(--body);line-height:1.7;color:var(--text);resize:vertical;background:var(--surface)}
+.compa::placeholder{color:var(--muted)}
+.compftr{display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--border-light);background:var(--bg)}
+.comp-status{font-size:11px;font-family:var(--fd);color:var(--muted);margin-left:auto}
+.sel{background:var(--accent-dim) !important}
+
 /* ── Loading ── */
 .ldr{display:flex;align-items:center;gap:10px;padding:14px 18px;color:var(--muted);font-size:13px}
 .spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
@@ -410,15 +426,44 @@ async function fetchEmails(){
 
 async function fetchEmailBody(emailId){
   try{
-    const text=await callClaudeMCP(
-      'Use Gmail MCP to get the full content of one email. Return ONLY a JSON object (no markdown) with: body (string, plain text max 2000 chars), from_name (string), from_email (string), subject (string), date (string).',
-      `Get full body of Gmail message ID: ${emailId}. JSON only.`,
-      [{type:'url',url:'https://gmail.mcp.claude.com/mcp',name:'gmail'}]
-    );
-    const clean=text.replace(/```json|```/g,'').trim();
-    const idx=clean.indexOf('{');
-    return JSON.parse(idx>=0?clean.slice(idx):clean);
-  }catch(e){return null;}
+    // Use Gmail API directly with cached OAuth token
+    const token = window._gTok || localStorage.getItem('pa_gmail_token');
+    if(!token) return null;
+    const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${emailId}?format=full`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    const msg = await res.json();
+    if(msg.error) throw new Error(msg.error.message);
+
+    // Extract headers
+    const hdrs = msg.payload?.headers || [];
+    const get = n => (hdrs.find(h => h.name.toLowerCase() === n.toLowerCase()) || {}).value || '';
+    const from = get('From');
+    const fm = from.match(/^(.*?)\s*<(.+?)>$/) || [null, from, from];
+
+    // Extract body — try plain text first, then HTML stripped
+    let body = '';
+    function findPart(part) {
+      if(!part) return '';
+      if(part.mimeType === 'text/plain' && part.body?.data) return atob(part.body.data.replace(/-/g,'+').replace(/_/g,'/'));
+      if(part.parts) for(const p of part.parts){ const r=findPart(p); if(r) return r; }
+      if(part.mimeType === 'text/html' && part.body?.data){
+        const html = atob(part.body.data.replace(/-/g,'+').replace(/_/g,'/'));
+        const tmp = document.createElement('div'); tmp.innerHTML = html;
+        return tmp.textContent || tmp.innerText || '';
+      }
+      return '';
+    }
+    body = findPart(msg.payload) || msg.snippet || '';
+
+    return {
+      body: body.slice(0, 3000),
+      from_name: (fm[1] || '').replace(/"/g, '').trim() || fm[2],
+      from_email: fm[2] || from,
+      subject: get('Subject'),
+      date: get('Date')
+    };
+  }catch(e){ console.error('fetchEmailBody:', e); return null; }
 }
 
 async function generateAlerts(){
@@ -796,24 +841,70 @@ function renderDashTab(overdue,unread){
 
 function renderGmailTab(){
   const sel=S.selectedEmail;
-  return `<div style="display:grid;grid-template-columns:${sel?'1fr 1.5fr':'1fr'};gap:14px;align-items:start">
-  <div class="card">
-    <div class="chdr"><span class="ctitle">Inbox</span><div style="display:flex;gap:8px;align-items:center"><span class="bdg bt">${S.emails.filter(e=>e.is_unread).length} unread</span><button style="padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--accent);font-size:11px;font-family:var(--fd);cursor:pointer" id="btnRefreshEmail">↻</button></div></div>
-    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading your inbox...</div>`:S.emails.length===0?`<div style="font-size:13px;color:var(--muted);padding:8px 0">No emails loaded.<br><br><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Load Gmail inbox</button></div>`:
-    S.emails.map((e,i)=>`<div class="erow ${e.is_unread?'unread':''} ${sel&&S.selectedEmailIdx===i?'sel':''}" data-email="${i}"><div class="edot ${e.is_unread?'':'read'}"></div><div class="einfo"><div class="esender">${esc(e.from_name||e.from_email)}</div><div class="esubj">${esc(e.subject)}</div><div class="eprev">${esc(e.snippet)}</div></div><div class="etime">${esc(fmtEmailDate(e.date))}</div></div>`).join('')}
-  </div>
-  ${sel?`<div>
-    <div class="edetail">
-      <div class="esubject">${esc(sel.subject)}</div>
-      <div class="emeta">From: ${esc(sel.from_name||sel.from_email)}${sel.from_email&&sel.from_name?` &lt;${esc(sel.from_email)}&gt;`:''}<br>${sel.date?`Date: ${new Date(sel.date).toLocaleString('en-GB')}`:''}
-      </div>
-      ${sel.bodyLoading?`<div class="ldr"><div class="spinner"></div>Loading email...</div>`:`<div class="ebody">${esc(sel.body||sel.snippet||'')}</div>`}
-      <div class="eactions">
-        <button class="ebtn pri" id="btnDraftReply">✏ Draft reply with Denise</button>
-        <button class="ebtn" id="btnCloseEmail">✕ Close</button>
+  const composing=S.composingReply?.id===sel?.id;
+  const actionable=S.emails.filter(e=>e.needsReply);
+  const unreadCount=S.emails.filter(e=>e.is_unread).length;
+
+  return `<div style="display:grid;grid-template-columns:${sel?'320px 1fr':'1fr'};gap:14px;align-items:start">
+  <!-- Email list -->
+  <div class="card" style="max-height:calc(100vh - 120px);overflow-y:auto">
+    <div class="chdr">
+      <span class="ctitle">Inbox</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        ${actionable.length>0?`<span class="bdg bd">${actionable.length} to action</span>`:`<span class="bdg bt">${unreadCount} unread</span>`}
+        <button style="padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--accent);font-size:11px;font-family:var(--fd);cursor:pointer" id="btnRefreshEmail">↻</button>
       </div>
     </div>
-    ${S.composingReply?.id===sel.id?`<div class="compose"><div class="comphdr">Reply to: ${esc(sel.from_name||sel.from_email)}</div><textarea class="compa" id="replyArea">${esc(S.replyDraft)}</textarea><div class="compftr"><button class="ebtn" id="btnCancelReply">Cancel</button><button class="ebtn pri" id="btnCopyReply">Copy reply text</button></div></div>`:''}
+    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading your inbox...</div>`:S.emails.length===0?`<div style="font-size:13px;color:var(--muted);padding:16px 18px">No emails loaded.<br><br><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Load Gmail inbox</button></div>`:
+    S.emails.map((e,i)=>{
+      const isSelected=sel&&S.selectedEmailIdx===i;
+      const needsAction=e.needsReply;
+      return `<div class="erow ${e.is_unread?'unread':''} ${isSelected?'sel':''}" data-email="${i}" style="position:relative">
+        ${needsAction?`<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--danger);border-radius:2px 0 0 2px"></div>`:''}
+        <div class="edot ${e.is_unread?'':'read'}"></div>
+        <div class="einfo">
+          <div class="esender">${esc(e.from_name||e.from_email)}</div>
+          <div class="esubj">${esc(e.subject)}</div>
+        </div>
+        <div class="etime">${esc(fmtEmailDate(e.date))}</div>
+      </div>`;
+    }).join('')}
+  </div>
+
+  ${sel?`<div style="display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 120px);overflow-y:auto">
+    <!-- Email detail -->
+    <div class="edetail">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div class="esubject">${esc(sel.subject)}</div>
+          <div class="emeta">
+            <strong>${esc(sel.from_name||sel.from_email)}</strong>${sel.from_email&&sel.from_name?` &lt;${esc(sel.from_email)}&gt;`:''}
+            ${sel.date?`<br><span style="color:var(--muted)">${new Date(sel.date).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span>`:''}
+          </div>
+        </div>
+        <button class="ebtn" id="btnCloseEmail" style="flex-shrink:0">✕</button>
+      </div>
+      ${sel.bodyLoading?`<div class="ldr"><div class="spinner"></div>Loading email...</div>`:`<div class="ebody">${esc(sel.body||sel.snippet||'')}</div>`}
+      ${!composing&&!sel.bodyLoading?`<div class="eactions">
+        <button class="ebtn pri" id="btnDraftReply">✏ Draft reply with Denise</button>
+        <button class="ebtn" id="btnManualReply">↩ Write reply</button>
+      </div>`:''}
+    </div>
+
+    <!-- Compose reply -->
+    ${composing?`<div class="compose">
+      <div class="comphdr">
+        <span>↩ Reply</span>
+        <button class="ebtn" id="btnCancelReply" style="padding:4px 10px;font-size:11px">Cancel</button>
+      </div>
+      <div class="compto">To: <span>${esc(sel.from_name||sel.from_email)} &lt;${esc(sel.from_email)}&gt;</span></div>
+      <textarea class="compa" id="replyArea" placeholder="Type your reply...">${esc(S.replyDraft)}</textarea>
+      <div class="compftr">
+        <button class="ebtn pri" id="btnDraftReply">✏ Redraft with Denise</button>
+        <button class="ebtn" id="btnCopyReply">Copy to clipboard</button>
+        <span class="comp-status" id="compStatus">${S.replyDraft==='Drafting reply...'?'Denise is drafting...':S.replyDraft?'Draft ready — edit as needed':''}</span>
+      </div>
+    </div>`:''}
   </div>`:''}
   </div>`;
 }
@@ -901,9 +992,10 @@ function bindEvents(){
   document.querySelectorAll('[data-email]').forEach(row=>{row.addEventListener('click',async()=>{const idx=parseInt(row.dataset.email);const email={...S.emails[idx]};S.selectedEmailIdx=idx;S.selectedEmail={...email,bodyLoading:true};S.composingReply=null;render();const full=await fetchEmailBody(email.id);S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});});
   document.querySelectorAll('[data-goto-email]').forEach(b=>{b.addEventListener('click',()=>{const idx=parseInt(b.dataset.gotoEmail);S.tab='gmail';S.selectedEmailIdx=idx;S.selectedEmail={...S.emails[idx],bodyLoading:true};render();fetchEmailBody(S.emails[idx].id).then(full=>{S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});});});
   const bdr=document.getElementById('btnDraftReply');if(bdr)bdr.addEventListener('click',()=>draftReply(S.selectedEmail));
+  const bmr=document.getElementById('btnManualReply');if(bmr)bmr.addEventListener('click',()=>{S.composingReply=S.selectedEmail;S.replyDraft='';render();setTimeout(()=>{const ta=document.getElementById('replyArea');if(ta)ta.focus();},50);});
   const bce=document.getElementById('btnCloseEmail');if(bce)bce.addEventListener('click',()=>{S.selectedEmail=null;S.composingReply=null;render();});
   const bcr=document.getElementById('btnCancelReply');if(bcr)bcr.addEventListener('click',()=>{S.composingReply=null;render();});
-  const bcop=document.getElementById('btnCopyReply');if(bcop)bcop.addEventListener('click',()=>{const a=document.getElementById('replyArea');navigator.clipboard.writeText(a?.value||S.replyDraft);bcop.textContent='Copied!';setTimeout(()=>bcop.textContent='Copy reply text',2000);});
+  const bcop=document.getElementById('btnCopyReply');if(bcop)bcop.addEventListener('click',()=>{const a=document.getElementById('replyArea');navigator.clipboard.writeText(a?.value||S.replyDraft);bcop.textContent='Copied!';setTimeout(()=>bcop.textContent='Copy to clipboard',2000);});
   // ClickUp
   const brc=document.getElementById('btnRefreshCU');if(brc)brc.addEventListener('click',fetchClickUp);
   const blc=document.getElementById('btnLoadCU');if(blc)blc.addEventListener('click',fetchClickUp);
