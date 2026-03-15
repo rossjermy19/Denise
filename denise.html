@@ -395,27 +395,26 @@ async function fetchEmails(){
     }
     console.log('[Denise] Token valid for:', testData.emailAddress);
 
-    // Find the Moov label ID (cache it)
-    if(!window._moovLabelId && !window._moovLabelChecked){
-      window._moovLabelChecked = true;
-      try{
-        const labelsRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const labelsData = await labelsRes.json();
-        const allLabels = labelsData.labels || [];
-        console.log('[Denise] Gmail labels found:', allLabels.map(l=>l.name).join(', '));
-        // Prefer exact "Moov" parent label over sub-labels like "Moov/DPD Go Lives"
-        const moovLabel = allLabels.find(l => l.name.toLowerCase() === 'moov')
-          || allLabels.find(l => l.name.toLowerCase().includes('moov'));
-        if(moovLabel){
-          window._moovLabelId = moovLabel.id;
-          console.log('[Denise] Using Moov label:', moovLabel.name, '→', moovLabel.id);
-        } else {
-          console.log('[Denise] No Moov label found — showing all inbox emails');
-        }
-      }catch(e){ console.error('[Denise] Label lookup failed:', e); }
-    }
+    // Always look up the Moov label fresh (no caching — avoids stale sub-label matches)
+    try{
+      const labelsRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const labelsData = await labelsRes.json();
+      const allLabels = labelsData.labels || [];
+      console.log('[Denise] Gmail labels found:', allLabels.map(l=>l.name).join(', '));
+      // EXACT match on "Moov" first, then fallback to includes
+      const moovLabel = allLabels.find(l => l.name === 'Moov')
+        || allLabels.find(l => l.name.toLowerCase() === 'moov')
+        || allLabels.find(l => l.name.toLowerCase().includes('moov'));
+      if(moovLabel){
+        window._moovLabelId = moovLabel.id;
+        console.log('[Denise] Using Moov label:', moovLabel.name, '→', moovLabel.id);
+      } else {
+        window._moovLabelId = null;
+        console.log('[Denise] No Moov label found — showing all inbox emails');
+      }
+    }catch(e){ console.error('[Denise] Label lookup failed:', e); }
 
     // Fetch THREADS (not individual messages) — groups conversations together
     const labelParam = window._moovLabelId ? `&labelIds=${window._moovLabelId}` : '&labelIds=INBOX';
@@ -633,6 +632,7 @@ async function generateAlerts(){
       }catch{ return e.snippet || ''; }
     }));
     const emailCtx=emailsToScan.map((e,i)=>`${i+1}. From: ${e.from_name||e.from_email} <${e.from_email}> | Subject: ${e.subject} | Thread messages: ${e.msgCount||1} | Unread: ${e.is_unread}\nLatest message:\n${bodies[i]}`).join('\n---\n');
+    console.log('[Denise] Triage input — emails with bodies:', emailsToScan.map((e,i) => `${i+1}. ${e.from_name}: "${e.subject}" (body: ${bodies[i]?.length||0} chars)`).join('\n'));
     const reply=await callClaude(
       `You are Denise, PA for Ross Jermy at Moov Parcel / Nino Logistics (UK shipping logistics).
 
@@ -670,17 +670,30 @@ Return ONLY valid JSON, no markdown:
 needsReply = 1-based indexes. Most inboxes should have 0-3 items flagged. If nothing needs action: {"needsReply":[],"alerts":[]}.`,
       `Emails:\n${emailCtx}`
     );
+    console.log('[Denise] Triage raw response:', reply.slice(0,500));
     const clean=reply.replace(/```json|```/g,'').trim();
     const match=clean.match(/\{[\s\S]*\}/);
     if(match){
       const parsed=JSON.parse(match[0]);
+      console.log('[Denise] Triage result:', parsed.needsReply?.length||0, 'of', S.emails.length, 'flagged. Indexes:', JSON.stringify(parsed.needsReply));
+      // FIRST: mark ALL emails as NOT needing reply
       S.emails.forEach((e,i)=>{ e.needsReply=false; e.alertPriority=null; });
+      // THEN: only flag the ones Claude identified
       (parsed.needsReply||[]).forEach(idx=>{ if(S.emails[idx-1]) S.emails[idx-1].needsReply=true; });
-      // Attach priority from alerts to email objects
       (parsed.alerts||[]).forEach(a=>{ if(S.emails[a.email_index-1]) S.emails[a.email_index-1].alertPriority=a.priority; });
       S.emailAlerts=parsed.alerts||[];
+    } else {
+      console.warn('[Denise] Triage: no valid JSON found in response');
+      // Default: nothing needs reply
+      S.emails.forEach((e,i)=>{ e.needsReply=false; e.alertPriority=null; });
+      S.emailAlerts=[];
     }
-  }catch(e){console.error('Alerts:',e);S.emailAlerts=[];}
+  }catch(e){
+    console.error('[Denise] Triage failed:', e);
+    // On failure, default to nothing flagged (not everything flagged)
+    S.emails.forEach((e,i)=>{ e.needsReply=false; e.alertPriority=null; });
+    S.emailAlerts=[];
+  }
   S.alertsLoading=false;render();
 }
 
