@@ -505,7 +505,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 <body>
 <div id="app"></div>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js" async defer></script>
 <script>
 
 const S={
@@ -729,7 +728,7 @@ async function handleVoiceAsk(text){
     // Build calendar context — fetch the relevant day(s)
     let calCtx = '';
     let dayLabel = "Today's";
-    const hasOutlook = getMsalInstance()?.getAllAccounts().length>0;
+    const hasOutlook = isOutlookConnected();
     if(dayOffset === -1){
       // "this week" — fetch today through next 5 days
       dayLabel = "This week's";
@@ -885,73 +884,35 @@ async function getGoogleToken(){
   return token;
 }
 
-// ── Microsoft / Outlook auth (MSAL.js) ──
-let _msalInstance = null;
-const MS_CLIENT_ID = localStorage.getItem('pa_ms_client_id') || '';
-const MS_SCOPES = ['Mail.Read','Mail.ReadWrite','Calendars.Read','User.Read'];
+// ── Outlook via backend IMAP/ICS (no Azure admin needed) ──
+let _outlookConnected = false;
 
-function getMsalInstance(){
-  if(_msalInstance) return _msalInstance;
-  const clientId = localStorage.getItem('pa_ms_client_id');
-  if(!clientId || !window.msal) return null;
-  _msalInstance = new msal.PublicClientApplication({
-    auth: { clientId, redirectUri: window.location.origin + window.location.pathname, authority: 'https://login.microsoftonline.com/common' },
-    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
-  });
-  return _msalInstance;
+async function checkOutlookStatus(){
+  try{
+    const res = await fetch(`${API()}/api/outlook/status`);
+    const data = await res.json();
+    _outlookConnected = data.configured;
+    if(_outlookConnected) console.log('[Denise] Outlook configured for:', data.user);
+    return _outlookConnected;
+  }catch{ _outlookConnected=false; return false; }
 }
 
-async function getMsToken(){
-  const inst = getMsalInstance();
-  if(!inst) throw new Error('Microsoft not configured — add your Azure App Client ID in settings');
-  const accounts = inst.getAllAccounts();
-  if(accounts.length > 0){
-    try{
-      const resp = await inst.acquireTokenSilent({ scopes: MS_SCOPES, account: accounts[0] });
-      return resp.accessToken;
-    }catch(e){ console.warn('[Denise] MS silent token failed, interactive:', e); }
-  }
-  const resp = await inst.acquireTokenPopup({ scopes: MS_SCOPES });
-  return resp.accessToken;
-}
+function isOutlookConnected(){ return _outlookConnected; }
 
 async function connectOutlook(){
-  try{
-    const token = await getMsToken();
-    console.log('[Denise] Outlook connected, token:', token.slice(0,10)+'...');
-    fetchOutlookEmails();
-    fetchOutlookCalendar();
-    fetchOutlookCalendarWeek();
-  }catch(e){
-    console.error('[Denise] Outlook auth failed:', e);
-    alert('Outlook sign-in failed: ' + e.message);
-  }
+  const ok = await checkOutlookStatus();
+  if(ok){ fetchOutlookEmails(); fetchOutlookCalendar(); fetchOutlookCalendarWeek(); }
+  else { alert('Outlook not configured on the backend.\n\nSet these Railway env vars:\n• OUTLOOK_USER = ross.jermy@thedespatchcompany.com\n• OUTLOOK_APP_PASSWORD = your app password\n• OUTLOOK_ICS_URL = your calendar ICS link\n\nFor the app password: go to account.microsoft.com → Security → App passwords.'); }
 }
 
 async function fetchOutlookEmails(){
   if(S.olEmailsLoading) return;
   S.olEmailsLoading=true; S.olEmailsError=null; render();
   try{
-    const token = await getMsToken();
-    // Fetch recent emails from inbox
-    const res = await fetch('https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,isRead,bodyPreview,conversationId,body', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
+    const res = await fetch(`${API()}/api/outlook/emails`);
     const data = await res.json();
-    if(data.error) throw new Error(data.error.message);
-    S.olEmails = (data.value || []).map(m => ({
-      id: m.id,
-      threadId: m.conversationId || m.id,
-      subject: (m.subject||'(no subject)').replace(/^(Re|Fwd|RE|FW):\s*/gi,''),
-      from_name: m.from?.emailAddress?.name || '',
-      from_email: m.from?.emailAddress?.address || '',
-      date: m.receivedDateTime || '',
-      snippet: (m.bodyPreview || '').slice(0,120),
-      body: m.body?.content ? (() => { const d=document.createElement('div'); d.innerHTML=m.body.content; return (d.textContent||d.innerText||'').slice(0,3000); })() : '',
-      is_unread: !m.isRead,
-      msgCount: 1,
-      source: 'despatch',
-    }));
+    if(data.error) throw new Error(data.error);
+    S.olEmails = data.emails || [];
     console.log('[Denise] Outlook emails:', S.olEmails.length);
   }catch(e){
     console.error('[Denise] Outlook emails failed:', e);
@@ -959,37 +920,24 @@ async function fetchOutlookEmails(){
     S.olEmails = [];
   }
   S.olEmailsLoading=false; render();
-  // Trigger triage on combined emails
   if(S.emails.length > 0 || S.olEmails.length > 0) generateAlerts();
+}
+
+async function fetchOutlookEmailBody(uid){
+  try{
+    const res = await fetch(`${API()}/api/outlook/email/${uid}`);
+    const data = await res.json();
+    if(data.error) throw new Error(data.error);
+    return data;
+  }catch(e){ console.error('[Denise] Outlook email body failed:', e); return null; }
 }
 
 async function fetchOutlookCalendarForDay(dayOffset){
   try{
-    const token = await getMsToken();
-    const now = new Date();
-    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
-    const startOfDay = target.toISOString().split('T')[0] + 'T00:00:00';
-    const endD = new Date(target); endD.setDate(endD.getDate()+1);
-    const endOfDay = endD.toISOString().split('T')[0] + 'T00:00:00';
-    const res = await fetch(`https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${startOfDay}&endDateTime=${endOfDay}&$top=20&$orderby=start/dateTime&$select=subject,start,end,location,isAllDay,attendees,onlineMeeting,webLink,onlineMeetingUrl`, {
-      headers: { 'Authorization': 'Bearer ' + token, 'Prefer': 'outlook.timezone="Europe/London"' }
-    });
+    const res = await fetch(`${API()}/api/outlook/calendar?dayOffset=${dayOffset}`);
     const data = await res.json();
     if(data.error) return [];
-    return (data.value||[])
-      .filter(ev => !(ev.subject||'').toLowerCase().includes('ross in sheffield'))
-      .map(ev => {
-        const start = ev.start?.dateTime ? new Date(ev.start.dateTime + (ev.start.dateTime.includes('Z')?'':'Z')) : null;
-        const allDay = ev.isAllDay;
-        return {
-          title: ev.subject || '(No title)',
-          startStr: allDay ? 'All day' : start ? start.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : '',
-          location: ev.location?.displayName || '',
-          attendees: (ev.attendees||[]).map(a=>a.emailAddress?.name||a.emailAddress?.address).slice(0,5),
-          hangoutLink: ev.onlineMeeting?.joinUrl || ev.onlineMeetingUrl || ev.webLink || '',
-          source: 'despatch',
-        };
-      });
+    return data.events || [];
   }catch(e){ console.error('[Denise] Outlook calendar day failed:', e); return []; }
 }
 
@@ -1004,14 +952,9 @@ async function fetchOutlookCalendar(){
 
 async function fetchOutlookCalendarWeek(){
   try{
-    const results = {};
-    await Promise.all([0,1,2,3,4,5,6].map(async offset => {
-      const events = await fetchOutlookCalendarForDay(offset);
-      const d = new Date(); d.setDate(d.getDate()+offset);
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      results[key] = events.length;
-    }));
-    S.olCalWeek = results;
+    const res = await fetch(`${API()}/api/outlook/calendar/week`);
+    const data = await res.json();
+    S.olCalWeek = data.week || {};
   }catch(e){ console.error('[Denise] Outlook week calendar failed:', e); }
   render();
 }
@@ -1021,18 +964,20 @@ async function sendOutlookReply(email){
   const body = replyArea?.value || S.replyDraft;
   if(!body || !body.trim()){ alert('Write a reply first'); return; }
   try{
-    const token = await getMsToken();
     const btn = document.getElementById('btnSendReply');
     if(btn){ btn.textContent='Sending...'; btn.disabled=true; }
-    await fetch(`https://graph.microsoft.com/v1.0/me/messages/${email.id}/reply`, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comment: body })
+    const res = await fetch(`${API()}/api/outlook/reply`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ to: email.from_email, subject: email.subject, body, inReplyTo: email.threadId })
     });
+    const data = await res.json();
+    if(data.error) throw new Error(data.error);
     S.composingReply=null; S.replyDraft=''; S.sendSuccess=email.id; render();
     setTimeout(()=>{ S.sendSuccess=null; render(); }, 3000);
   }catch(e){
     console.error('[Denise] Outlook send failed:', e);
+    const btn = document.getElementById('btnSendReply');
+    if(btn){ btn.textContent='Send failed'; btn.disabled=false; }
     alert('Failed to send: ' + e.message);
   }
 }
@@ -1041,11 +986,7 @@ async function trashOutlookEmail(email){
   if(!email) return;
   if(!confirm('Move this email to trash?')) return;
   try{
-    const token = await getMsToken();
-    await fetch(`https://graph.microsoft.com/v1.0/me/messages/${email.id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
+    await fetch(`${API()}/api/outlook/email/${email.id}`, { method:'DELETE' });
     S.olEmails = S.olEmails.filter(e => e.id !== email.id);
     S.selectedEmail=null; S.composingReply=null; render();
   }catch(e){
@@ -1281,7 +1222,7 @@ async function openCalendarDay(offset){
   render();
   const [gEvents, oEvents] = await Promise.all([
     fetchCalendarForDay(offset),
-    getMsalInstance()?.getAllAccounts().length>0 ? fetchOutlookCalendarForDay(offset) : Promise.resolve([])
+    isOutlookConnected() ? fetchOutlookCalendarForDay(offset) : Promise.resolve([])
   ]);
   S.calPopupEvents = [...gEvents, ...oEvents].sort((a,b) => {
     if(a.startStr==='All day') return -1;
@@ -1689,7 +1630,7 @@ function renderDash(){
       <button class="hbtn" id="btnForceSync" ${S.syncing?'disabled':''}>↻ Refresh all</button>
       <button class="hbtn" id="btnSync" ${S.syncing?'disabled':''}>${S.syncing?'Syncing...':'↓ Sync Pocket'}</button>
       <div class="live"><div class="ldot"></div>Live</div>
-      <button class="rbtn" id="btnOutlookSettings" title="Outlook settings" style="${getMsalInstance()?.getAllAccounts().length>0?'color:var(--despatch)':''}">📧</button>
+      <button class="rbtn" id="btnOutlookSettings" title="Outlook settings" style="${isOutlookConnected()?'color:var(--despatch)':''}">📧</button>
       <button class="rbtn" id="btnVoiceSettings" title="Voice settings">${localStorage.getItem('pa_elevenlabs_key')?'🎙':'🔇'}</button>
       <button class="rbtn" id="btnReset">Reset</button>
     </div>
@@ -1763,7 +1704,7 @@ function renderDashTab(overdue,unread){
     <!-- Diary — compact week strip -->
     <div class="card">
       <div class="chdr"><span class="ctitle">This week</span>${S.calWeekLoading?'<div class="spinner" style="width:12px;height:12px"></div>':''}</div>
-      ${window._gTok || getMsalInstance()?.getAllAccounts().length>0?`<div class="cal-strip">
+      ${window._gTok || isOutlookConnected()?`<div class="cal-strip">
         ${[0,1,2,3,4,5,6].map(offset => {
           const d=new Date();d.setDate(d.getDate()+offset);
           const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1886,7 +1827,7 @@ function renderGmailTab(){
   combined.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
   const actionable=combined.filter(e=>e.needsReply);
   const unreadCount=combined.filter(e=>e.is_unread).length;
-  const msConnected=getMsalInstance()?.getAllAccounts().length>0;
+  const msConnected=isOutlookConnected();
 
   return `<div class="gmail-layout${sel?' has-detail':''}">
   <!-- Email list -->
@@ -2046,7 +1987,7 @@ function renderPATab(){
 
 function bindEvents(){
   // Nav
-  document.querySelectorAll('[data-tab]').forEach(btn=>{btn.addEventListener('click',()=>{S.tab=btn.dataset.tab;render();if(S.tab==='gmail'){if(S.emails.length===0&&!S.emailsLoading)fetchEmails();if(S.olEmails.length===0&&!S.olEmailsLoading&&getMsalInstance()?.getAllAccounts().length>0)fetchOutlookEmails();}});});
+  document.querySelectorAll('[data-tab]').forEach(btn=>{btn.addEventListener('click',()=>{S.tab=btn.dataset.tab;render();if(S.tab==='gmail'){if(S.emails.length===0&&!S.emailsLoading)fetchEmails();if(S.olEmails.length===0&&!S.olEmailsLoading&&isOutlookConnected())fetchOutlookEmails();}});});
   // Wizard
   const ui=document.getElementById('backendUrl');if(ui)ui.addEventListener('input',e=>S.backendUrl=e.target.value);
   const bcb=document.getElementById('btnCheckBackend');if(bcb)bcb.addEventListener('click',()=>{S.backendUrl=document.getElementById('backendUrl')?.value||S.backendUrl;wizCheckBackend();});
@@ -2056,25 +1997,14 @@ function bindEvents(){
   const bsk=document.getElementById('btnSkip');if(bsk)bsk.addEventListener('click',wizSkip);
   // Header
   const bsy=document.getElementById('btnSync');if(bsy)bsy.addEventListener('click',syncPocket);
-  const bfs=document.getElementById('btnForceSync');if(bfs)bfs.addEventListener('click',()=>{forceSyncPocket();if(getMsalInstance()?.getAllAccounts().length>0){fetchOutlookEmails();fetchOutlookCalendar();fetchOutlookCalendarWeek();}});
+  const bfs=document.getElementById('btnForceSync');if(bfs)bfs.addEventListener('click',()=>{forceSyncPocket();if(isOutlookConnected()){fetchOutlookEmails();fetchOutlookCalendar();fetchOutlookCalendarWeek();}});
   const brs=document.getElementById('btnReset');if(brs)brs.addEventListener('click',()=>{if(confirm('Reset Denise?')){localStorage.removeItem('pa_setup_done');localStorage.removeItem('pa_api_base');S.wizStep=1;S.apiKey='';S.keyResult=null;S.tasks=[];S.calls=[];S.emails=[];S.olEmails=[];S.olCalEvents=[];S.olCalWeek={};render();}});
-  const bos=document.getElementById('btnOutlookSettings');if(bos)bos.addEventListener('click',()=>{
-    const msConnected=getMsalInstance()?.getAllAccounts().length>0;
-    if(msConnected){
-      if(confirm('Outlook is connected as '+getMsalInstance().getAllAccounts()[0].username+'.\n\nDisconnect?')){
-        getMsalInstance().getAllAccounts().forEach(a=>getMsalInstance().getAccountByHomeId(a.homeAccountId)&&getMsalInstance().removeAccount(a).catch(()=>{}));
-        _msalInstance=null;S.olEmails=[];S.olCalEvents=[];S.olCalWeek={};render();
-      }
+  const bos=document.getElementById('btnOutlookSettings');if(bos)bos.addEventListener('click',async()=>{
+    const connected=isOutlookConnected();
+    if(connected){
+      alert('Outlook is connected via IMAP/ICS (ross.jermy@thedespatchcompany.com).\n\nTo change settings, update these Railway env vars:\n• OUTLOOK_USER\n• OUTLOOK_APP_PASSWORD\n• OUTLOOK_ICS_URL');
     } else {
-      const current=localStorage.getItem('pa_ms_client_id')||'';
-      const clientId=prompt('Enter your Azure App Client ID for Outlook (ross.jermy@thedespatchcompany.com):\n\nTo get this:\n1. Go to portal.azure.com → App registrations\n2. Create a new app (or use existing)\n3. Add redirect URI: '+window.location.origin+window.location.pathname+'\n4. API permissions: Mail.Read, Mail.ReadWrite, Calendars.Read, User.Read\n5. Copy the Application (client) ID',current);
-      if(clientId===null) return;
-      if(clientId.trim()){
-        localStorage.setItem('pa_ms_client_id',clientId.trim());
-        _msalInstance=null; // reset so it picks up new ID
-        alert('Client ID saved. Click 📧 again to sign in.');
-        render();
-      }
+      alert('Outlook is not configured on the backend.\n\nSet these Railway env vars:\n• OUTLOOK_USER = ross.jermy@thedespatchcompany.com\n• OUTLOOK_APP_PASSWORD = your app password\n• OUTLOOK_IMAP_HOST = outlook.office365.com (default)\n• OUTLOOK_SMTP_HOST = smtp.office365.com (default)\n• OUTLOOK_ICS_URL = your calendar ICS link\n\nFor the app password:\n1. Go to account.microsoft.com → Security\n2. Click "App passwords"\n3. Generate a new app password\n\nAfter setting env vars, redeploy and click Refresh all.');
     }
   });
   const bvs=document.getElementById('btnVoiceSettings');if(bvs)bvs.addEventListener('click',()=>{
@@ -2104,7 +2034,7 @@ function bindEvents(){
   // Gmail
   const ble=document.getElementById('btnLoadEmail');if(ble)ble.addEventListener('click',fetchEmails);
   const ble2=document.getElementById('btnLoadEmail2');if(ble2)ble2.addEventListener('click',fetchEmails);
-  const bre=document.getElementById('btnRefreshEmail');if(bre)bre.addEventListener('click',()=>{fetchEmails();if(getMsalInstance()?.getAllAccounts().length>0)fetchOutlookEmails();});
+  const bre=document.getElementById('btnRefreshEmail');if(bre)bre.addEventListener('click',()=>{fetchEmails();if(isOutlookConnected())fetchOutlookEmails();});
   const bco=document.getElementById('btnConnectOutlook');if(bco)bco.addEventListener('click',connectOutlook);
   const bcod=document.getElementById('btnConnectOutlookDash');if(bcod)bcod.addEventListener('click',connectOutlook);
   document.querySelectorAll('[data-email-src]').forEach(row=>{row.addEventListener('click',async()=>{
@@ -2114,9 +2044,9 @@ function bindEvents(){
     const email={...pool[idx]};
     S.selectedEmailIdx=idx;S.selectedEmail={...email,bodyLoading:true,source:src};S.composingReply=null;render();
     if(src==='moov'){const full=await fetchEmailBody(email.id);S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();}
-    else{S.selectedEmail={...S.selectedEmail,bodyLoading:false};render();}
+    else{const full=await fetchOutlookEmailBody(email.uid);if(full){S.selectedEmail={...S.selectedEmail,body:full.body||full.textBody||'',bodyLoading:false};}else{S.selectedEmail={...S.selectedEmail,bodyLoading:false};}render();}
   });});
-  document.querySelectorAll('[data-goto-email]').forEach(b=>{b.addEventListener('click',()=>{const idx=parseInt(b.dataset.gotoEmail);const src=b.dataset.gotoSrc||'moov';const pool=src==='moov'?S.emails:S.olEmails;S.tab='gmail';S.selectedEmailIdx=idx;S.selectedEmail={...pool[idx],bodyLoading:true,source:src};render();if(src==='moov'){fetchEmailBody(pool[idx].id).then(full=>{S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});}else{S.selectedEmail={...S.selectedEmail,bodyLoading:false};render();}});});
+  document.querySelectorAll('[data-goto-email]').forEach(b=>{b.addEventListener('click',()=>{const idx=parseInt(b.dataset.gotoEmail);const src=b.dataset.gotoSrc||'moov';const pool=src==='moov'?S.emails:S.olEmails;S.tab='gmail';S.selectedEmailIdx=idx;S.selectedEmail={...pool[idx],bodyLoading:true,source:src};render();if(src==='moov'){fetchEmailBody(pool[idx].id).then(full=>{S.selectedEmail={...S.selectedEmail,...(full||{}),bodyLoading:false};render();});}else{fetchOutlookEmailBody(pool[idx].uid).then(full=>{if(full){S.selectedEmail={...S.selectedEmail,body:full.body||full.textBody||'',bodyLoading:false};}else{S.selectedEmail={...S.selectedEmail,bodyLoading:false};}render();});}});});
   document.querySelectorAll('[data-goto-call]').forEach(b=>{b.addEventListener('click',()=>{const c=S.calls.find(x=>x.id===b.dataset.gotoCall);if(c){S.tab='pocket';S.selectedCall=c;render();}});});
   const bdr=document.getElementById('btnDraftReply');if(bdr)bdr.addEventListener('click',()=>draftReply(S.selectedEmail));
   const bmr=document.getElementById('btnManualReply');if(bmr)bmr.addEventListener('click',()=>{S.composingReply=S.selectedEmail;S.replyDraft='';render();setTimeout(()=>{const ta=document.getElementById('replyArea');if(ta)ta.focus();},50);});
@@ -2159,15 +2089,16 @@ if(isSetup()){
     console.log('[Denise] Found cached token, auto-loading Gmail + Calendar');
     fetchEmails(); // getGoogleToken() inside will validate & use the cached token
   }
-  // Auto-load Outlook if we have an MSAL account cached
-  setTimeout(()=>{
-    if(getMsalInstance()?.getAllAccounts().length>0){
-      console.log('[Denise] Found cached MS account, auto-loading Outlook');
+  // Auto-load Outlook if backend is configured (IMAP/ICS)
+  setTimeout(async()=>{
+    const olOk = await checkOutlookStatus();
+    if(olOk){
+      console.log('[Denise] Outlook configured via IMAP/ICS, auto-loading');
       fetchOutlookEmails();
       fetchOutlookCalendar();
       fetchOutlookCalendarWeek();
     }
-  }, 1000); // slight delay to let MSAL.js initialise
+  }, 500);
 }
 </script>
 </body>

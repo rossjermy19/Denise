@@ -350,6 +350,214 @@ app.get("/api/gmail/debug", async (req, res) => {
 ${xml.slice(0, 2000)}`);
 });
 
+// ── Outlook via IMAP/SMTP (no Azure admin needed) ────────────────────
+import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
+import nodemailer from "nodemailer";
+import ical from "node-ical";
+
+// Outlook credentials stored in env vars on Railway
+const OL_USER = () => process.env.OUTLOOK_USER || "";
+const OL_PASS = () => process.env.OUTLOOK_APP_PASSWORD || "";
+const OL_IMAP_HOST = () => process.env.OUTLOOK_IMAP_HOST || "outlook.office365.com";
+const OL_SMTP_HOST = () => process.env.OUTLOOK_SMTP_HOST || "smtp.office365.com";
+
+app.get("/api/outlook/status", (req, res) => {
+  res.json({ configured: !!(OL_USER() && OL_PASS()), user: OL_USER() || null });
+});
+
+app.get("/api/outlook/emails", async (req, res) => {
+  if (!OL_USER() || !OL_PASS()) return res.status(400).json({ error: "Outlook credentials not configured. Set OUTLOOK_USER and OUTLOOK_APP_PASSWORD in Railway env vars." });
+  let client;
+  try {
+    client = new ImapFlow({
+      host: OL_IMAP_HOST(),
+      port: 993,
+      secure: true,
+      auth: { user: OL_USER(), pass: OL_PASS() },
+      logger: false,
+    });
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      const emails = [];
+      // Fetch the 20 most recent messages
+      const msgs = client.fetch("1:*", { envelope: true, bodyStructure: true, flags: true, uid: true }, { uid: true });
+      const allMsgs = [];
+      for await (const msg of msgs) { allMsgs.push(msg); }
+      // Sort by date descending and take 20
+      allMsgs.sort((a, b) => new Date(b.envelope.date) - new Date(a.envelope.date));
+      for (const msg of allMsgs.slice(0, 20)) {
+        const env = msg.envelope;
+        const from = env.from?.[0] || {};
+        emails.push({
+          id: String(msg.uid),
+          threadId: env.messageId || String(msg.uid),
+          subject: (env.subject || "(no subject)").replace(/^(Re|Fwd|RE|FW):\s*/gi, ""),
+          from_name: from.name || "",
+          from_email: from.address || "",
+          date: env.date ? new Date(env.date).toISOString() : "",
+          snippet: "",
+          is_unread: !msg.flags.has("\\Seen"),
+          msgCount: 1,
+          source: "despatch",
+        });
+      }
+      res.json({ emails });
+    } finally { lock.release(); }
+    await client.logout();
+  } catch (e) {
+    console.error("[Outlook IMAP]", e.message);
+    if (client) try { await client.logout(); } catch {}
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/outlook/email/:uid", async (req, res) => {
+  if (!OL_USER() || !OL_PASS()) return res.status(400).json({ error: "Not configured" });
+  let client;
+  try {
+    client = new ImapFlow({
+      host: OL_IMAP_HOST(), port: 993, secure: true,
+      auth: { user: OL_USER(), pass: OL_PASS() }, logger: false,
+    });
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      const msg = await client.fetchOne(req.params.uid, { source: true }, { uid: true });
+      if (!msg || !msg.source) return res.status(404).json({ error: "Email not found" });
+      const parsed = await simpleParser(msg.source);
+      res.json({
+        body: (parsed.text || parsed.html?.replace(/<[^>]*>/g, " ") || "").slice(0, 3000),
+        from_name: parsed.from?.value?.[0]?.name || "",
+        from_email: parsed.from?.value?.[0]?.address || "",
+        subject: parsed.subject || "",
+        date: parsed.date ? parsed.date.toISOString() : "",
+      });
+    } finally { lock.release(); }
+    await client.logout();
+  } catch (e) {
+    console.error("[Outlook email body]", e.message);
+    if (client) try { await client.logout(); } catch {}
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/outlook/reply", async (req, res) => {
+  if (!OL_USER() || !OL_PASS()) return res.status(400).json({ error: "Not configured" });
+  const { to, subject, body, inReplyTo } = req.body;
+  if (!to || !body) return res.status(400).json({ error: "Missing to or body" });
+  try {
+    const transport = nodemailer.createTransport({
+      host: OL_SMTP_HOST(), port: 587, secure: false,
+      auth: { user: OL_USER(), pass: OL_PASS() },
+    });
+    await transport.sendMail({
+      from: OL_USER(),
+      to,
+      subject: subject?.startsWith("Re:") ? subject : "Re: " + (subject || ""),
+      text: body,
+      inReplyTo: inReplyTo || undefined,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[Outlook SMTP]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/outlook/email/:uid", async (req, res) => {
+  if (!OL_USER() || !OL_PASS()) return res.status(400).json({ error: "Not configured" });
+  let client;
+  try {
+    client = new ImapFlow({
+      host: OL_IMAP_HOST(), port: 993, secure: true,
+      auth: { user: OL_USER(), pass: OL_PASS() }, logger: false,
+    });
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      await client.messageDelete(req.params.uid, { uid: true });
+    } finally { lock.release(); }
+    await client.logout();
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[Outlook delete]", e.message);
+    if (client) try { await client.logout(); } catch {}
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Outlook calendar via ICS feed
+app.get("/api/outlook/calendar", async (req, res) => {
+  const icsUrl = process.env.OUTLOOK_ICS_URL;
+  if (!icsUrl) return res.status(400).json({ error: "Set OUTLOOK_ICS_URL in Railway env vars (Outlook → Settings → Shared calendars → Publish)." });
+  try {
+    const data = await ical.async.fromURL(icsUrl);
+    const now = new Date();
+    const dayOffset = parseInt(req.query.dayOffset || "0");
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+    const endOfDay = new Date(target); endOfDay.setDate(endOfDay.getDate() + 1);
+
+    const events = Object.values(data)
+      .filter(ev => ev.type === "VEVENT")
+      .filter(ev => {
+        const start = ev.start ? new Date(ev.start) : null;
+        if (!start) return false;
+        return start >= target && start < endOfDay;
+      })
+      .filter(ev => !(ev.summary || "").toLowerCase().includes("ross in sheffield"))
+      .map(ev => {
+        const start = new Date(ev.start);
+        const allDay = !ev.start.getHours && !ev.start.getMinutes;
+        return {
+          title: ev.summary || "(No title)",
+          startStr: allDay ? "All day" : start.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+          location: ev.location || "",
+          attendees: (ev.attendee ? (Array.isArray(ev.attendee) ? ev.attendee : [ev.attendee]) : [])
+            .map(a => typeof a === "string" ? a.replace("mailto:", "") : (a.params?.CN || a.val?.replace("mailto:", "") || ""))
+            .slice(0, 5),
+          hangoutLink: ev.url || "",
+          source: "despatch",
+        };
+      })
+      .sort((a, b) => a.startStr.localeCompare(b.startStr));
+
+    res.json({ events });
+  } catch (e) {
+    console.error("[Outlook ICS]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Outlook calendar week summary (event counts per day)
+app.get("/api/outlook/calendar/week", async (req, res) => {
+  const icsUrl = process.env.OUTLOOK_ICS_URL;
+  if (!icsUrl) return res.json({ week: {} });
+  try {
+    const data = await ical.async.fromURL(icsUrl);
+    const now = new Date();
+    const week = {};
+    for (let i = 0; i < 7; i++) {
+      const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      const endOfDay = new Date(target); endOfDay.setDate(endOfDay.getDate() + 1);
+      const key = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`;
+      week[key] = Object.values(data)
+        .filter(ev => ev.type === "VEVENT")
+        .filter(ev => {
+          const start = ev.start ? new Date(ev.start) : null;
+          return start && start >= target && start < endOfDay;
+        })
+        .filter(ev => !(ev.summary || "").toLowerCase().includes("ross in sheffield"))
+        .length;
+    }
+    res.json({ week });
+  } catch (e) {
+    console.error("[Outlook ICS week]", e.message);
+    res.json({ week: {} });
+  }
+});
+
 // ── Claude API proxy ──────────────────────────────────────────────────
 app.post("/api/claude", async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(400).json({ error: "ANTHROPIC_API_KEY not set" });
