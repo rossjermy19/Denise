@@ -567,27 +567,122 @@ async function speak(text){
   speechSynthesis.speak(utter);
 }
 
+// Fetch calendar events for a specific day offset (0=today, 1=tomorrow, etc.) without changing the dashboard
+async function fetchCalendarForDay(dayOffset){
+  try{
+    const token = window._gTok;
+    if(!token) return [];
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+    const pad = n => String(n).padStart(2,'0');
+    const tzOff = target.getTimezoneOffset();
+    const tzSign = tzOff <= 0 ? '+' : '-';
+    const tzH = pad(Math.floor(Math.abs(tzOff)/60));
+    const tzM = pad(Math.abs(tzOff)%60);
+    const tz = `${tzSign}${tzH}:${tzM}`;
+    const startOfDay = `${target.getFullYear()}-${pad(target.getMonth()+1)}-${pad(target.getDate())}T00:00:00${tz}`;
+    const endOfDay = `${target.getFullYear()}-${pad(target.getMonth()+1)}-${pad(target.getDate())}T23:59:59${tz}`;
+    const calRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(startOfDay)}&timeMax=${encodeURIComponent(endOfDay)}&singleEvents=true&orderBy=startTime&maxResults=20`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const calData = await calRes.json();
+    if(calData.error) return [];
+    return (calData.items||[])
+      .filter(ev => ev.status !== 'cancelled')
+      .filter(ev => !(ev.summary||'').toLowerCase().includes('ross in sheffield'))
+      .map(ev => {
+        const start = ev.start?.dateTime ? new Date(ev.start.dateTime) : null;
+        const allDay = !ev.start?.dateTime && !!ev.start?.date;
+        return {
+          title: ev.summary || '(No title)',
+          startStr: allDay ? 'All day' : start ? start.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : '',
+          location: ev.location || '',
+          attendees: (ev.attendees||[]).map(a=>a.displayName||a.email).slice(0,5),
+        };
+      });
+  }catch(e){ console.error('[Denise] Calendar day fetch failed:', e); return []; }
+}
+
+// Detect which day(s) the user is asking about
+function detectDayOffset(text){
+  const t = text.toLowerCase();
+  if(/\btomorrow\b/.test(t)) return 1;
+  if(/\bday after tomorrow\b/.test(t)) return 2;
+  if(/\btoday\b|\bthis morning\b|\bthis afternoon\b|\bthis evening\b/.test(t)) return 0;
+  // "Monday", "Tuesday", etc.
+  const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const now = new Date();
+  const todayIdx = now.getDay();
+  for(let i=0;i<days.length;i++){
+    if(t.includes(days[i])){
+      let diff = i - todayIdx;
+      if(diff <= 0) diff += 7; // next occurrence
+      return diff;
+    }
+  }
+  // "next week" — show Monday
+  if(/\bnext week\b/.test(t)){
+    let diff = 1 - todayIdx;
+    if(diff <= 0) diff += 7;
+    return diff;
+  }
+  // "this week" — today through Friday
+  if(/\bthis week\b/.test(t)) return -1; // special: fetch multiple days
+  return null; // no specific day detected — use today
+}
+
 async function handleVoiceAsk(text){
   S.voiceMode = null;
-  // Build context from current state
-  const calCtx = S.calEvents.length > 0
-    ? S.calEvents.map(ev => `${ev.startStr}: ${ev.title}${ev.location?' at '+ev.location:''}${ev.attendees.length>0?' with '+ev.attendees.join(', '):''}`).join('\n')
-    : 'No events today';
-  const wxCtx = S.weather
-    ? `${S.weather.temp}°C, ${S.weather.desc}, feels like ${S.weather.feelsLike}°, high ${S.weather.maxTemp}°, low ${S.weather.minTemp}°, ${S.weather.chanceOfRain}% rain, wind ${S.weather.windMph}mph`
-    : 'Weather not loaded';
-  const emailCtx = S.emails.slice(0,8).map(e =>
-    `From ${e.from_name||e.from_email}: "${e.subject}"${e.needsReply?' [NEEDS ACTION]':''}`
-  ).join('\n') || 'Not loaded';
-  const taskCtx = S.tasks.slice(0,5).map(t => `[${t.status}] ${t.text}`).join('\n') || 'None';
-
   S.chatLoading = true; render();
+
   try{
+    // Detect if the user is asking about a specific day
+    const dayOffset = detectDayOffset(text);
+
+    // Build calendar context — fetch the relevant day(s)
+    let calCtx = '';
+    let dayLabel = "Today's";
+    if(dayOffset === -1){
+      // "this week" — fetch today through next 5 days
+      dayLabel = "This week's";
+      const weekEvents = [];
+      for(let d=0;d<6;d++){
+        const events = await fetchCalendarForDay(d);
+        if(events.length > 0){
+          const dt = new Date(); dt.setDate(dt.getDate()+d);
+          const label = d===0?'Today':d===1?'Tomorrow':dt.toLocaleDateString('en-GB',{weekday:'long'});
+          weekEvents.push(`${label}:\n${events.map(ev=>`  ${ev.startStr}: ${ev.title}${ev.location?' at '+ev.location:''}${ev.attendees.length>0?' with '+ev.attendees.join(', '):''}`).join('\n')}`);
+        }
+      }
+      calCtx = weekEvents.length>0 ? weekEvents.join('\n') : 'No events this week';
+    } else if(dayOffset !== null && dayOffset !== 0){
+      // Specific future day — fetch it
+      const dt = new Date(); dt.setDate(dt.getDate()+dayOffset);
+      dayLabel = dayOffset===1?"Tomorrow's":dt.toLocaleDateString('en-GB',{weekday:'long'})+"'s";
+      const events = await fetchCalendarForDay(dayOffset);
+      calCtx = events.length > 0
+        ? events.map(ev => `${ev.startStr}: ${ev.title}${ev.location?' at '+ev.location:''}${ev.attendees.length>0?' with '+ev.attendees.join(', '):''}`).join('\n')
+        : `No events ${dayOffset===1?'tomorrow':'on '+dt.toLocaleDateString('en-GB',{weekday:'long'})}`;
+    } else {
+      // Today — use cached events
+      calCtx = S.calEvents.length > 0
+        ? S.calEvents.map(ev => `${ev.startStr}: ${ev.title}${ev.location?' at '+ev.location:''}${ev.attendees.length>0?' with '+ev.attendees.join(', '):''}`).join('\n')
+        : 'No events today';
+    }
+
+    const wxCtx = S.weather
+      ? `${S.weather.temp}°C, ${S.weather.desc}, feels like ${S.weather.feelsLike}°, high ${S.weather.maxTemp}°, low ${S.weather.minTemp}°, ${S.weather.chanceOfRain}% rain, wind ${S.weather.windMph}mph`
+      : 'Weather not loaded';
+    const emailCtx = S.emails.slice(0,8).map(e =>
+      `From ${e.from_name||e.from_email}: "${e.subject}"${e.needsReply?' [NEEDS ACTION]':''}`
+    ).join('\n') || 'Not loaded';
+    const taskCtx = S.tasks.slice(0,5).map(t => `[${t.status}] ${t.text}`).join('\n') || 'None';
+
     const reply = await callClaude(
-      `You are Denise, a friendly British PA for Ross Jermy at Moov Parcel.
+      `You are Denise, a friendly Irish PA for Ross Jermy at Moov Parcel.
 Ross just spoke to you. Respond conversationally in 2-4 SHORT sentences — this will be read aloud, so keep it natural and brief. No bullet points, no markdown, no lists. Speak as if you're his PA sitting across the desk.
 
-Today's diary:\n${calCtx}
+${dayLabel} diary:\n${calCtx}
 Weather:\n${wxCtx}
 Emails:\n${emailCtx}
 Tasks:\n${taskCtx}`,
