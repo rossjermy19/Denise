@@ -534,14 +534,40 @@ async function fetchCalendar(){
     if(!token){ console.warn('[Denise] No token for calendar'); S.calLoading=false; render(); return; }
     const now = new Date();
     const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + S.calDayOffset);
-    const startOfDay = target.toISOString();
-    const endOfDay = new Date(target.getFullYear(), target.getMonth(), target.getDate(), 23, 59, 59).toISOString();
-    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(startOfDay)}&timeMax=${encodeURIComponent(endOfDay)}&singleEvents=true&orderBy=startTime&maxResults=20`, {
+    // Use RFC 3339 with timezone offset to avoid UTC day-boundary issues
+    const pad = n => String(n).padStart(2,'0');
+    const tzOff = target.getTimezoneOffset();
+    const tzSign = tzOff <= 0 ? '+' : '-';
+    const tzH = pad(Math.floor(Math.abs(tzOff)/60));
+    const tzM = pad(Math.abs(tzOff)%60);
+    const tz = `${tzSign}${tzH}:${tzM}`;
+    const startOfDay = `${target.getFullYear()}-${pad(target.getMonth()+1)}-${pad(target.getDate())}T00:00:00${tz}`;
+    const endOfDay = `${target.getFullYear()}-${pad(target.getMonth()+1)}-${pad(target.getDate())}T23:59:59${tz}`;
+    console.log('[Denise] Calendar query:', startOfDay, '→', endOfDay);
+
+    // Fetch calendar list first to get ALL calendars, not just primary
+    const calListRes = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
-    const data = await res.json();
-    if(data.error){ console.error('[Denise] Calendar error:', data.error); S.calLoading=false; render(); return; }
-    S.calEvents = (data.items||[]).map(ev => {
+    const calListData = await calListRes.json();
+    const calendars = (calListData.items||[]).filter(c => c.selected !== false && c.accessRole !== 'freeBusyReader');
+    console.log('[Denise] Calendars:', calendars.map(c=>c.summary).join(', '));
+
+    // Fetch events from all calendars in parallel
+    const allEvents = await Promise.all(calendars.map(async cal => {
+      try{
+        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?timeMin=${encodeURIComponent(startOfDay)}&timeMax=${encodeURIComponent(endOfDay)}&singleEvents=true&orderBy=startTime&maxResults=20`, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        if(data.error){ console.warn('[Denise] Calendar error for', cal.summary, data.error); return []; }
+        return (data.items||[]).map(ev => ({...ev, _calName: cal.summary, _calColor: cal.backgroundColor}));
+      }catch(e){ console.warn('[Denise] Failed to fetch calendar', cal.summary, e); return []; }
+    }));
+    const merged = allEvents.flat();
+    console.log('[Denise] Total events across all calendars:', merged.length);
+
+    S.calEvents = merged.map(ev => {
       const start = ev.start?.dateTime ? new Date(ev.start.dateTime) : null;
       const end = ev.end?.dateTime ? new Date(ev.end.dateTime) : null;
       const allDay = !ev.start?.dateTime && !!ev.start?.date;
@@ -556,9 +582,15 @@ async function fetchCalendar(){
         attendees: (ev.attendees||[]).map(a=>a.displayName||a.email).slice(0,5),
         hangoutLink: ev.hangoutLink || ev.conferenceData?.entryPoints?.[0]?.uri || '',
         status: ev.status,
+        calName: ev._calName || '',
       };
-    }).filter(ev => ev.status !== 'cancelled');
-    console.log('[Denise] Calendar:', S.calEvents.length, 'events today');
+    }).filter(ev => ev.status !== 'cancelled')
+      .sort((a,b) => {
+        if(a.allDay && !b.allDay) return -1;
+        if(!a.allDay && b.allDay) return 1;
+        return (a.start||0) - (b.start||0);
+      });
+    console.log('[Denise] Calendar:', S.calEvents.length, 'events for', startOfDay.slice(0,10));
   }catch(e){ console.error('[Denise] Calendar fetch failed:', e); }
   S.calLoading=false; render();
 }
