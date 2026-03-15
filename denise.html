@@ -1479,6 +1479,12 @@ async function forceSyncPocket(){
 
 async function sendChat(msg){
   if(!msg.trim()||S.chatLoading)return;
+  // Easter egg responses — instant, no API call
+  if(/god\s*dam[mn].*denise/i.test(msg)){
+    S.messages.push({role:'user',text:msg});
+    S.messages.push({role:'ai',text:"I'm sorry, Mr Jermy."});
+    render();scrollChat();speak("I'm sorry, Mr Jermy.");return;
+  }
   S.messages.push({role:'user',text:msg});S.chatLoading=true;render();scrollChat();
   const tCtx=S.tasks.slice(0,10).map(t=>`- [${t.status}] ${t.text} (due:${t.due})`).join('\n');
   const rCtx=S.calls.slice(0,5).map(c=>`- "${c.title}": ${c.bulletPoints?.join(';')||'no summary'}`).join('\n');
