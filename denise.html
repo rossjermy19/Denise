@@ -397,21 +397,36 @@ async function fetchEmails(){
     const token = await getGmailToken('https://www.googleapis.com/auth/gmail.readonly');
 
     // Find the Moov label ID (cache it)
-    if(!window._moovLabelId){
-      const labelsRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
-        headers: { Authorization: 'Bearer ' + token }
-      });
-      const labelsData = await labelsRes.json();
-      const moovLabel = (labelsData.labels||[]).find(l => l.name.toLowerCase()==='moov' || l.name.toLowerCase().includes('moov'));
-      if(moovLabel) window._moovLabelId = moovLabel.id;
+    if(!window._moovLabelId && !window._moovLabelChecked){
+      window._moovLabelChecked = true;
+      try{
+        const labelsRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        const labelsData = await labelsRes.json();
+        const allLabels = labelsData.labels || [];
+        console.log('[Denise] Gmail labels found:', allLabels.map(l=>l.name).join(', '));
+        // Match "Moov" as exact name or as sub-label path (e.g. "Work/Moov")
+        const moovLabel = allLabels.find(l => {
+          const name = l.name.toLowerCase();
+          return name === 'moov' || name.endsWith('/moov') || name.startsWith('moov/');
+        });
+        if(moovLabel){
+          window._moovLabelId = moovLabel.id;
+          console.log('[Denise] Using Moov label:', moovLabel.name, '→', moovLabel.id);
+        } else {
+          console.log('[Denise] No Moov label found — showing all inbox emails');
+        }
+      }catch(e){ console.error('[Denise] Label lookup failed:', e); }
     }
 
-    // Fetch message list — filtered to Moov label if found
-    const labelParam = window._moovLabelId ? `&labelIds=${window._moovLabelId}` : '';
+    // Fetch message list — filtered to Moov label if found, otherwise all inbox
+    const labelParam = window._moovLabelId ? `&labelIds=${window._moovLabelId}` : '&labelIds=INBOX';
     const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20${labelParam}`, {
       headers: { Authorization: 'Bearer ' + token }
     });
     const listData = await listRes.json();
+    console.log('[Denise] Gmail fetch:', listData.messages?.length||0, 'messages', listData.error?'ERROR: '+listData.error.message:'OK');
     if(listData.error) throw new Error(listData.error.message);
 
     // Fetch each message metadata in parallel
