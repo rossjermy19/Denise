@@ -578,19 +578,19 @@ function stopListening(){
 async function speak(text){
   S.voiceSpeaking = true; render();
 
-  // Try ElevenLabs first for natural Spanish-accented voice
+  // Try ElevenLabs first for well-spoken English female voice
   const elevenKey = localStorage.getItem('pa_elevenlabs_key');
   if(elevenKey){
     try{
-      // Use a warm female voice — the voice ID can be changed in settings
-      const voiceId = localStorage.getItem('pa_elevenlabs_voice') || 'XB0fDUnXU5powFXDhCwa'; // "Charlotte" — warm, clear female
+      // "Rachel" — polished, well-spoken British English female
+      const voiceId = localStorage.getItem('pa_elevenlabs_voice') || '21m00Tcm4TlvDq8ikWAM'; // "Rachel"
       const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'xi-api-key': elevenKey },
         body: JSON.stringify({
-          text: `<spanish_accent>${text}</spanish_accent>`,
+          text: text,
           model_id: 'eleven_multilingual_v2',
-          voice_settings: { stability: 0.4, similarity_boost: 0.65, style: 0.55, use_speaker_boost: true }
+          voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.4, use_speaker_boost: true }
         })
       });
       if(res.ok){
@@ -606,17 +606,17 @@ async function speak(text){
     }catch(e){ console.warn('[Denise] ElevenLabs error, falling back:', e); }
   }
 
-  // Fallback: browser SpeechSynthesis — prefer Spanish-accented female voice
+  // Fallback: browser SpeechSynthesis — prefer well-spoken British English female
   if(!window.speechSynthesis){ S.voiceSpeaking=false; render(); return; }
   window.speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = 'es-ES'; // Spanish — helps trigger Spanish-accented voices
+  utter.lang = 'en-GB';
   utter.rate = 1.0;
   utter.pitch = 1.05;
   const voices = speechSynthesis.getVoices();
-  // Priority: Spanish female > Spanish any > English female with warm tone > any English female
-  const voice = voices.find(v => /es/i.test(v.lang) && /female|monica|paulina|lucia/i.test(v.name))
-    || voices.find(v => /es/i.test(v.lang))
+  // Priority: British female (Kate/Serena/Martha) > British any > US female (Samantha) > any English female
+  const voice = voices.find(v => /en.GB/i.test(v.lang) && /female|kate|serena|martha/i.test(v.name))
+    || voices.find(v => /en.GB/i.test(v.lang))
     || voices.find(v => /en/i.test(v.lang) && /female|samantha/i.test(v.name))
     || voices.find(v => /en/i.test(v.lang) && /female/i.test(v.name));
   if(voice) utter.voice = voice;
@@ -738,7 +738,7 @@ async function handleVoiceAsk(text){
     const taskCtx = S.tasks.slice(0,5).map(t => `[${t.status}] ${t.text}`).join('\n') || 'None';
 
     const reply = await callClaude(
-      `You are Denise, a friendly Spanish PA for Ross Jermy at Moov Parcel.
+      `You are Denise, a well-spoken English PA for Ross Jermy at Moov Parcel.
 Ross just spoke to you. Respond conversationally in 2-4 SHORT sentences — this will be read aloud, so keep it natural and brief. No bullet points, no markdown, no lists. Speak as if you're his PA sitting across the desk.
 
 ${dayLabel} diary:\n${calCtx}
