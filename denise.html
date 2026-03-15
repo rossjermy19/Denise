@@ -934,7 +934,9 @@ async function fetchOutlookCalendarWeek(){
 async function fetchEmails(){
   if(S.emailsLoading) { console.log('[Denise] fetchEmails already in progress, skipping'); return; }
   const prevIds = S.emails.map(e=>e.threadId).join(',');
-  S.emailsLoading=true;S.emailsError=null;render();
+  const isRefresh = S.emails.length > 0;
+  S.emailsLoading=true;S.emailsError=null;
+  if(!isRefresh) render(); // only show loading spinner on first load, not refreshes
   try{
     const token = await getGoogleToken();
 
@@ -1205,7 +1207,9 @@ async function fetchWeather(){
 }
 
 async function generateAlerts(){
-  S.alertsLoading=true;S.alertsGenerated=true;render();
+  const isRetriage = S.alertsGenerated;
+  S.alertsLoading=true;S.alertsGenerated=true;
+  if(!isRetriage) render(); // only show loading on first triage, not background re-triage
   try{
     // Scan emails for triage
     const emailsToScan = S.emails.slice(0,15);
@@ -1678,7 +1682,7 @@ function renderDashTab(overdue,unread){
         <button style="padding:4px 10px;border-radius:var(--r);border:1px solid var(--border);background:transparent;font-size:11px;font-family:var(--fd);color:var(--muted);cursor:pointer" id="btnRefreshEmail">↻</button>
       </div>
     </div>
-    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Scanning your inbox...</div>`:
+    ${S.emailsLoading&&S.emails.length===0?`<div class="ldr"><div class="spinner"></div>Scanning your inbox...</div>`:
       S.emailsError?`
         <div style="padding:14px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:8px">Gmail error: ${esc(S.emailsError)}</div><button style="padding:8px 18px;border-radius:var(--r);border:none;background:var(--accent);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnLoadEmail">Try again</button></div>
       `:S.emails.length===0?`
@@ -1687,9 +1691,9 @@ function renderDashTab(overdue,unread){
           <button style="padding:8px 18px;border-radius:var(--r);border:none;background:var(--moov);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnLoadEmail">Load Gmail</button>
           ${localStorage.getItem('pa_ms_client_id')?`<button style="padding:8px 18px;border-radius:var(--r);border:none;background:var(--despatch);color:white;font-size:13px;font-family:var(--fb);cursor:pointer;font-weight:500" id="btnConnectOutlookDash">Connect Outlook</button>`:''}
         </div>
-      `:S.alertsLoading?`
+      `:S.alertsLoading&&needsReply.length===0&&S.emailAlerts.length===0?`
         <div class="ldr"><div class="spinner"></div>Denise is checking which emails need attention...</div>
-      `:needsReply.length===0?`
+      `:needsReply.length===0&&!S.alertsLoading?`
         <div style="padding:14px 18px;font-size:13px;color:var(--success);font-weight:500">✓ All clear — no emails need a reply right now.</div>
       `:`
         ${needsReply.map((e,i)=>{
@@ -1789,7 +1793,7 @@ function renderGmailTab(){
       <span style="font-size:12px;color:var(--despatch)">Outlook not connected</span>
       <button style="padding:4px 12px;border-radius:var(--r);border:1px solid var(--despatch-border);background:white;color:var(--despatch);font-size:11px;font-family:var(--fd);cursor:pointer" id="btnConnectOutlook">Connect Outlook</button>
     </div>`:''}
-    ${S.emailsLoading?`<div class="ldr"><div class="spinner"></div>Loading your inbox...</div>`:S.emailsError?`<div style="padding:16px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:8px">Failed to load Gmail: ${esc(S.emailsError)}</div><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Try again</button></div>`:combined.length===0?`<div style="font-size:13px;color:var(--muted);padding:16px 18px">No emails loaded.<br><br><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Load Gmail inbox</button></div>`:
+    ${S.emailsLoading&&combined.length===0?`<div class="ldr"><div class="spinner"></div>Loading your inbox...</div>`:S.emailsError?`<div style="padding:16px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:8px">Failed to load Gmail: ${esc(S.emailsError)}</div><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Try again</button></div>`:combined.length===0?`<div style="font-size:13px;color:var(--muted);padding:16px 18px">No emails loaded.<br><br><button style="padding:9px 18px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;font-size:13px;font-family:var(--fd);cursor:pointer" id="btnLoadEmail2">Load Gmail inbox</button></div>`:
     combined.map((e,i)=>{
       const isSelected=sel&&sel.id===e.id;
       const needsAction=e.needsReply;
