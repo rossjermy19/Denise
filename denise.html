@@ -1556,23 +1556,30 @@ async function fetchData(){
     const d=await res.json();
     console.log('[Denise] fetchData:', d.tasks?.length||0, 'tasks,', d.calls?.length||0, 'recordings');
     S.calls=d.calls||[];S.stats=d.stats||{};
-    // Tasks: use backend data if it has tasks, otherwise restore from localStorage cache
-    if((d.tasks||[]).length > 0){
-      S.tasks=d.tasks;
-      cacheTasks();
-    } else {
-      const cached = JSON.parse(localStorage.getItem('pa_tasks_cache')||'[]');
-      if(cached.length > 0){
-        console.log('[Denise] Backend has 0 tasks but localStorage has', cached.length, '— restoring');
-        S.tasks=cached;
-        // Push cached tasks back to backend
-        for(const t of cached){
+    // Tasks: merge backend + localStorage cache (backend is source of truth when available)
+    const backendTasks = d.tasks||[];
+    const cached = JSON.parse(localStorage.getItem('pa_tasks_cache')||'[]');
+    if(backendTasks.length > 0){
+      // Merge: start with backend tasks, add any cached tasks not already present
+      const backendIds = new Set(backendTasks.map(t=>t.id));
+      const extraCached = cached.filter(t=>!backendIds.has(t.id));
+      S.tasks = [...backendTasks, ...extraCached];
+      if(extraCached.length > 0){
+        console.log('[Denise] Merged', extraCached.length, 'cached tasks not on backend');
+        for(const t of extraCached){
           fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)}).catch(()=>{});
         }
-      } else {
-        S.tasks=[];
       }
+    } else if(cached.length > 0){
+      console.log('[Denise] Backend has 0 tasks but localStorage has', cached.length, '— restoring');
+      S.tasks=cached;
+      for(const t of cached){
+        fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)}).catch(()=>{});
+      }
+    } else {
+      S.tasks=[];
     }
+    cacheTasks();
     if(!S.taskModalOpen) render();
     // Auto-resync from Pocket if backend lost data (Railway redeploy wipes db.json)
     if(S.calls.length===0 && localStorage.getItem('pa_pocket_key') && !S.syncing){
@@ -1631,11 +1638,6 @@ async function deleteCall(id){
   if(S.selectedCall?.id===id)S.selectedCall=null;
   S.stats={...S.stats,totalCalls:S.calls.length};render();
   try{await fetch(`${API()}/api/calls/${id}`,{method:'DELETE'});await fetchData();}catch{await fetchData();}
-}
-async function syncPocket(){
-  S.syncing=true;render();
-  try{const res=await fetch(`${API()}/api/sync`,{method:'POST'});const d=await res.json();S.syncMsg=d.message||d.error;await fetchData();}catch{S.syncMsg='Sync failed';}
-  S.syncing=false;render();setTimeout(()=>{S.syncMsg=null;render();},4000);
 }
 async function forceSyncPocket(){
   S.syncing=true;render();
