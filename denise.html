@@ -1771,7 +1771,7 @@ function renderTasksPane(){
           ${t.details?`<div style="font-size:11px;color:var(--text2);margin-top:2px;line-height:1.3" title="${esc(t.details)}">${esc(t.details.length>50?t.details.slice(0,50)+'...':t.details)}</div>`:''}
           <div style="display:flex;gap:6px;align-items:center;margin-top:2px">
             <span class="task-src" style="color:${bizColor}">${bizLabel}</span>
-            <span class="task-src">${t.source==='email'?'Email':t.source==='manual'?'Manual':'Pocket'}</span>
+            <span class="task-src">${t.source==='email'?'Email':t.source==='pocket'?'Pocket':'Manual'}</span>
           </div>
         </div>
         <div class="task-due ${p}">${fmtTaskDue(t.due)}</div>
@@ -1876,7 +1876,7 @@ function renderDashTab(overdue,unread){
   <div class="stats stats-5">
     <div class="stat"><div class="slbl">${S.calDayOffset===0?'Meetings today':S.calDayOffset===1?'Meetings tomorrow':'Meetings'}</div><div class="sval" style="color:var(--accent)">${S.calEvents.length + S.olCalEvents.length}</div></div>
     <div class="stat"><div class="slbl">Emails to action</div><div class="sval" style="color:${needsReply.length>0?'var(--danger)':'var(--teal)'}">${needsReply.length}</div></div>
-    <div class="stat"><div class="slbl">Pocket tasks</div><div class="sval" style="color:var(--accent)">${S.stats.open||0}</div></div>
+    <div class="stat"><div class="slbl">Pocket tasks</div><div class="sval" style="color:var(--accent)">${S.stats.pocketOpen||0}</div></div>
     <div class="stat"><div class="slbl">Overdue</div><div class="sval" style="color:var(--danger)">${overdue||0}</div></div>
     <div class="stat"><div class="slbl">Recordings</div><div class="sval" style="color:var(--purple)">${S.stats.totalCalls||0}</div></div>
   </div>

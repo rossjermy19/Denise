@@ -83,7 +83,7 @@ app.post("/api/setup/complete", (req, res) => { const cfg = loadConfig(); cfg.co
 // ── Pocket data ───────────────────────────────────────────────────────
 app.get("/api/data", (req, res) => {
   const db = loadDB();
-  res.json({ tasks: db.tasks, calls: db.calls, stats: { open: db.tasks.filter(t => t.status === "open").length, done: db.tasks.filter(t => t.status === "done").length, overdue: db.tasks.filter(t => t.status === "overdue").length, totalCalls: db.calls.length } });
+  res.json({ tasks: db.tasks, calls: db.calls, stats: { open: db.tasks.filter(t => t.status === "open").length, pocketOpen: db.tasks.filter(t => t.status === "open" && t.source === "pocket").length, done: db.tasks.filter(t => t.status === "done").length, overdue: db.tasks.filter(t => t.status === "overdue").length, totalCalls: db.calls.length } });
 });
 app.patch("/api/tasks/:id", (req, res) => {
   const db = loadDB(); const task = db.tasks.find(t => t.id === req.params.id);
