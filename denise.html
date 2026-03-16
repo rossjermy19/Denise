@@ -1353,8 +1353,10 @@ Priority:
 - "high": needs reply today
 - "medium": reply within 2-3 days
 
+For each flagged email, also write a short actionable task (max 8 words) that Ross should do. Start with a verb. Examples: "Reply to Annabel about meeting time", "Sort QZ tray issue", "Chase invoice from DHL".
+
 Return ONLY valid JSON, no markdown:
-{"needsReply":[1,3],"alerts":[{"type":"email","title":"max 8 words","reason":"max 15 words","email_index":1,"priority":"urgent|high|medium"}]}
+{"needsReply":[1,3],"alerts":[{"type":"email","title":"max 8 words","reason":"max 15 words","email_index":1,"priority":"urgent|high|medium","task":"verb + max 8 words"}]}
 
 needsReply = 1-based indexes. Most inboxes should have 0-3 items flagged. If nothing needs action: {"needsReply":[],"alerts":[]}.`,
       `Emails:\n${emailCtx}`
@@ -1371,6 +1373,22 @@ needsReply = 1-based indexes. Most inboxes should have 0-3 items flagged. If not
       (parsed.needsReply||[]).forEach(idx=>{ if(emailsToScan[idx-1]) emailsToScan[idx-1].needsReply=true; });
       (parsed.alerts||[]).forEach(a=>{ if(emailsToScan[a.email_index-1]) emailsToScan[a.email_index-1].alertPriority=a.priority; });
       S.emailAlerts=parsed.alerts||[];
+      // Auto-create tasks from flagged emails (skip duplicates by threadId)
+      const existingEmailTaskIds = new Set(S.tasks.filter(t=>t.source==='email').map(t=>t.emailThreadId));
+      for(const a of (parsed.alerts||[])){
+        const em = emailsToScan[a.email_index-1];
+        if(!em || !a.task) continue;
+        if(existingEmailTaskIds.has(em.threadId)) continue; // already have a task for this thread
+        const priMap={urgent:'urgent',high:'high',medium:'medium'};
+        const dueDate = a.priority==='urgent'?new Date().toISOString().slice(0,10):
+          a.priority==='high'?new Date().toISOString().slice(0,10):
+          new Date(Date.now()+2*86400000).toISOString().slice(0,10);
+        const task={id:'email_'+em.threadId,text:a.task,due:dueDate,status:'open',source:'email',business:'moov',emailThreadId:em.threadId,priority:priMap[a.priority]||'auto',details:'From: '+(em.from_name||em.from_email)+' — '+em.subject};
+        S.tasks.push(task);
+        // Also save to backend
+        fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(task)}).catch(()=>{});
+        console.log('[Denise] Auto-created task from email:', a.task, '(thread:', em.threadId, ')');
+      }
     } else {
       console.warn('[Denise] Triage: no valid JSON found in response');
       // Default: nothing needs reply
@@ -1732,7 +1750,7 @@ function renderTasksPane(){
           ${t.details?`<div style="font-size:11px;color:var(--text2);margin-top:2px;line-height:1.3" title="${esc(t.details)}">${esc(t.details.length>50?t.details.slice(0,50)+'...':t.details)}</div>`:''}
           <div style="display:flex;gap:6px;align-items:center;margin-top:2px">
             <span class="task-src" style="color:${bizColor}">${bizLabel}</span>
-            <span class="task-src">${t.source==='manual'?'Manual':'Pocket'}</span>
+            <span class="task-src">${t.source==='email'?'Email':t.source==='manual'?'Manual':'Pocket'}</span>
           </div>
         </div>
         <div class="task-due ${p}">${fmtTaskDue(t.due)}</div>

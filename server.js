@@ -93,7 +93,13 @@ app.patch("/api/tasks/:id", (req, res) => {
 });
 app.post("/api/tasks", (req, res) => {
   const db = loadDB();
-  db.tasks.unshift({ id: "manual_" + Date.now(), text: req.body.text, due: req.body.due || "Today", status: "open", source: "manual", business: req.body.business || "moov", details: req.body.details || "", priority: req.body.priority || "auto" });
+  const id = req.body.id || ("manual_" + Date.now());
+  const source = req.body.source || "manual";
+  // Don't duplicate email tasks
+  if(source==='email' && req.body.emailThreadId && db.tasks.some(t=>t.emailThreadId===req.body.emailThreadId && t.status!=='done')) {
+    return res.json(db.tasks.find(t=>t.emailThreadId===req.body.emailThreadId));
+  }
+  db.tasks.unshift({ id, text: req.body.text, due: req.body.due || "Today", status: "open", source, business: req.body.business || "moov", details: req.body.details || "", priority: req.body.priority || "auto", emailThreadId: req.body.emailThreadId || null });
   saveDB(db); res.json(db.tasks[0]);
 });
 app.delete("/api/calls/:id", (req, res) => {
