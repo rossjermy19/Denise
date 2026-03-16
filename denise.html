@@ -241,6 +241,33 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .task-mic-btn.recording{background:var(--danger);border-color:var(--danger);color:white;animation:pulse 1s infinite}
 .task-add-btn{padding:6px 14px;border-radius:var(--r);border:none;background:var(--accent);color:white;font-size:12px;font-family:var(--fb);cursor:pointer;font-weight:500;flex-shrink:0}
 .task-add-btn:hover{opacity:0.9}
+/* Task modal overlay */
+.task-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+.task-modal{background:var(--surface);border-radius:var(--radius-lg);padding:0;width:380px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--border)}
+.task-modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-light)}
+.task-modal-hdr h3{margin:0;font-size:15px;font-family:var(--fb);font-weight:600;color:var(--text)}
+.task-modal-close{width:28px;height:28px;border-radius:50%;border:none;background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px}
+.task-modal-close:hover{background:var(--bg);color:var(--text)}
+.task-modal-body{padding:16px 20px;display:flex;flex-direction:column;gap:14px}
+.task-modal-field{display:flex;flex-direction:column;gap:4px}
+.task-modal-field label{font-size:11px;font-family:var(--fd);font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em}
+.task-modal-field input,.task-modal-field textarea,.task-modal-field select{padding:8px 12px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-family:var(--body);outline:none;transition:border-color .15s}
+.task-modal-field input:focus,.task-modal-field textarea:focus,.task-modal-field select:focus{border-color:var(--accent)}
+.task-modal-field textarea{resize:vertical;min-height:60px}
+.task-modal-row{display:flex;gap:10px}
+.task-modal-row .task-modal-field{flex:1}
+.task-biz-toggle{display:flex;border-radius:var(--r);overflow:hidden;border:1px solid var(--border)}
+.task-biz-toggle button{flex:1;padding:8px 12px;border:none;background:var(--bg);color:var(--muted);font-size:12px;font-family:var(--fd);font-weight:600;cursor:pointer;transition:all .15s;letter-spacing:0.03em}
+.task-biz-toggle button.active-moov{background:var(--moov);color:white}
+.task-biz-toggle button.active-despatch{background:var(--despatch);color:white}
+.task-modal-footer{padding:12px 20px;border-top:1px solid var(--border-light);display:flex;gap:8px;justify-content:flex-end}
+.task-modal-footer button{padding:8px 18px;border-radius:var(--r);font-size:13px;font-family:var(--fb);font-weight:500;cursor:pointer;border:none}
+.task-modal-cancel{background:var(--bg);color:var(--text)}
+.task-modal-cancel:hover{background:var(--border-light)}
+.task-modal-save{background:var(--accent);color:white}
+.task-modal-save:hover{opacity:0.9}
+.task-plus-btn{width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--accent);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;transition:all .15s;flex-shrink:0}
+.task-plus-btn:hover{background:var(--accent);color:white;border-color:var(--accent)}
 
 /* ── Dashboard briefing grid ── */
 .briefing-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
@@ -556,6 +583,7 @@ const S={
   voiceListening:false,voiceMode:null,voiceTranscript:'',voiceSpeaking:false,
   messages:[{role:'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket, Gmail and Outlook. Ask me what needs your attention today, or anything else."}],
   chatLoading:false,
+  taskModalOpen:false,
   syncing:false,syncMsg:null,
   wizStep:1,backendUrl:localStorage.getItem('pa_api_base')||'',
   apiKey:'',keyResult:null,checkingBackend:false,backendErr:'',
@@ -1483,17 +1511,23 @@ async function toggleTask(id){
   S.tasks=S.tasks.map(t=>t.id===id?{...t,status:t.status==='done'?'open':'done'}:t);render();
   try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH'});}catch{}
 }
-async function addTask(text, due, business){
+async function addTask(text, due, business, details, priority){
   if(!text.trim())return;
   const dueStr = due || new Date().toISOString().slice(0,10);
   const biz = business || 'moov';
-  const tmp={id:'tmp_'+Date.now(),text:text.trim(),due:dueStr,status:'open',source:'manual',business:biz};
-  S.tasks=[tmp,...S.tasks];S.newTask='';render();
-  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim(),due:dueStr,business:biz})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);render();}catch{}
+  const det = details?.trim() || '';
+  const pri = priority || 'auto';
+  const tmp={id:'tmp_'+Date.now(),text:text.trim(),due:dueStr,status:'open',source:'manual',business:biz,details:det,priority:pri};
+  S.tasks=[tmp,...S.tasks];S.newTask='';S.taskModalOpen=false;render();
+  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim(),due:dueStr,business:biz,details:det,priority:pri})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);render();}catch{}
 }
-function getTaskPriority(due){
+function getTaskPriority(due, task){
   if(!due || due==='Done') return 'done';
-  // Try to parse as date
+  // If manual priority is set (not auto), map it
+  if(task && task.priority && task.priority!=='auto'){
+    const m={urgent:'overdue',high:'today',medium:'soon',low:'later'};
+    return m[task.priority]||'later';
+  }
   const d = new Date(due);
   if(isNaN(d)) return 'later';
   const now = new Date(); now.setHours(0,0,0,0);
@@ -1638,30 +1672,19 @@ function renderDash(){
 function renderTasksPane(){
   const open = S.tasks.filter(t=>t.status!=='done');
   const done = S.tasks.filter(t=>t.status==='done');
-  // Sort open tasks: overdue first, then today, then soon, then later
   const pOrder={overdue:0,today:1,soon:2,later:3};
-  open.sort((a,b)=>(pOrder[getTaskPriority(a.due)]??4)-(pOrder[getTaskPriority(b.due)]??4));
-  const todayStr = new Date().toISOString().slice(0,10);
+  open.sort((a,b)=>(pOrder[getTaskPriority(a.due,a)]??4)-(pOrder[getTaskPriority(b.due,b)]??4));
   return `<div class="card dash-tasks">
     <div class="chdr">
       <span class="ctitle">Tasks</span>
-      <span class="bdg" style="background:var(--accent-dim);color:var(--accent)">${open.length} open</span>
-    </div>
-    <!-- Add task row -->
-    <div class="task-add-row" style="flex-wrap:wrap">
-      <div style="display:flex;gap:6px;flex:1;min-width:0">
-        <input class="task-add-input" id="taskInput" type="text" placeholder="Add a task..." />
-        <button class="task-mic-btn" id="btnTaskVoice" title="Add task by voice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></button>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;width:100%;margin-top:4px">
-        <input class="task-date-input" id="taskDate" type="date" value="${todayStr}" title="Deadline" style="flex:1" />
-        <button class="task-biz-btn" id="btnTaskBiz" data-biz="moov" title="Business" style="padding:4px 10px;border-radius:var(--r);border:2px solid var(--moov);background:var(--moov-dim);color:var(--moov);font-size:10px;font-family:var(--fd);font-weight:600;cursor:pointer;letter-spacing:0.03em">MOOV</button>
-        <button class="task-add-btn" id="btnAddTaskNew">Add</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="bdg" style="background:var(--accent-dim);color:var(--accent)">${open.length} open</span>
+        <button class="task-plus-btn" id="btnOpenTaskModal" title="Add task">+</button>
       </div>
     </div>
-    ${open.length===0&&done.length===0?`<div style="padding:20px 14px;text-align:center;color:var(--muted);font-size:13px">No tasks yet. Add one above or sync from Pocket.</div>`:''}
+    ${open.length===0&&done.length===0?`<div style="padding:20px 14px;text-align:center;color:var(--muted);font-size:13px">No tasks yet. Click + to add one or sync from Pocket.</div>`:''}
     ${open.map(t=>{
-      const p=getTaskPriority(t.due);
+      const p=getTaskPriority(t.due,t);
       const biz=t.business||'moov';
       const bizColor=biz==='despatch'?'var(--despatch)':'var(--moov)';
       const bizLabel=biz==='despatch'?'DC':'MP';
@@ -1669,6 +1692,7 @@ function renderTasksPane(){
         <div class="task-check" data-toggle-task="${esc(t.id)}" style="border-color:${bizColor}"></div>
         <div style="flex:1;min-width:0">
           <div class="task-text">${esc(t.text)}</div>
+          ${t.details?`<div style="font-size:11px;color:var(--text2);margin-top:2px;line-height:1.3" title="${esc(t.details)}">${esc(t.details.length>50?t.details.slice(0,50)+'...':t.details)}</div>`:''}
           <div style="display:flex;gap:6px;align-items:center;margin-top:2px">
             <span class="task-src" style="color:${bizColor}">${bizLabel}</span>
             <span class="task-src">${t.source==='manual'?'Manual':'Pocket'}</span>
@@ -1689,7 +1713,59 @@ function renderTasksPane(){
         </div>
       </div>`;}).join('')}
     `:''}
-  </div>`;
+  </div>
+  <!-- Task add modal -->
+  ${S.taskModalOpen?`
+  <div class="task-modal-overlay" id="taskModalOverlay">
+    <div class="task-modal">
+      <div class="task-modal-hdr">
+        <h3>Add Task</h3>
+        <button class="task-modal-close" id="btnCloseTaskModal">&times;</button>
+      </div>
+      <div class="task-modal-body">
+        <div class="task-modal-field">
+          <label>Task name</label>
+          <input type="text" id="tmTaskName" placeholder="What needs doing?" autofocus />
+        </div>
+        <div class="task-modal-field">
+          <label>Details</label>
+          <textarea id="tmTaskDetails" placeholder="Any extra context or notes..."></textarea>
+        </div>
+        <div class="task-modal-field">
+          <label>Business</label>
+          <div class="task-biz-toggle">
+            <button id="tmBizMoov" class="active-moov">MOOV</button>
+            <button id="tmBizDespatch">DESPATCH</button>
+          </div>
+        </div>
+        <div class="task-modal-row">
+          <div class="task-modal-field">
+            <label>Deadline</label>
+            <input type="date" id="tmTaskDate" value="${new Date().toISOString().slice(0,10)}" />
+          </div>
+          <div class="task-modal-field">
+            <label>Priority</label>
+            <select id="tmTaskPriority">
+              <option value="auto">Auto (by date)</option>
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="task-mic-btn" id="btnTaskVoice" title="Dictate task name"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></button>
+          <span style="font-size:11px;color:var(--muted)">Or dictate by voice</span>
+        </div>
+      </div>
+      <div class="task-modal-footer">
+        <button class="task-modal-cancel" id="btnCancelTask">Cancel</button>
+        <button class="task-modal-save" id="btnSaveTask">Add Task</button>
+      </div>
+    </div>
+  </div>
+  `:''}`;
 }
 
 function renderDashTab(overdue,unread){
@@ -2080,21 +2156,34 @@ function bindEvents(){
   const nt2=document.getElementById('newTask2');if(nt2)nt2.addEventListener('keydown',e=>{if(e.key==='Enter')addTask(nt2.value);});
   const bat=document.getElementById('btnAddTask');if(bat)bat.addEventListener('click',()=>addTask(document.getElementById('newTask')?.value||''));
   const bat2=document.getElementById('btnAddTask2');if(bat2)bat2.addEventListener('click',()=>addTask(document.getElementById('newTask2')?.value||''));
-  // Tasks pane (dashboard)
-  const ti=document.getElementById('taskInput');const td=document.getElementById('taskDate');const bb=document.getElementById('btnTaskBiz');
-  function getTaskBiz(){return bb?.dataset?.biz||'moov';}
-  if(ti){
-    ti.addEventListener('keydown',e=>{if(e.key==='Enter'){addTask(ti.value,td?.value,getTaskBiz());ti.value='';}});
-  }
-  const batn=document.getElementById('btnAddTaskNew');if(batn)batn.addEventListener('click',()=>{const i=document.getElementById('taskInput');const d=document.getElementById('taskDate');if(i){addTask(i.value,d?.value,getTaskBiz());i.value='';}});
-  // Business toggle: click to switch between Moov and Despatch
-  if(bb)bb.addEventListener('click',()=>{
-    const current=bb.dataset.biz||'moov';
-    const next=current==='moov'?'despatch':'moov';
-    bb.dataset.biz=next;
-    if(next==='despatch'){bb.textContent='DESPATCH';bb.style.borderColor='var(--despatch)';bb.style.background='var(--despatch-dim)';bb.style.color='var(--despatch)';}
-    else{bb.textContent='MOOV';bb.style.borderColor='var(--moov)';bb.style.background='var(--moov-dim)';bb.style.color='var(--moov)';}
+  // Tasks pane — open modal
+  const bOpenModal=document.getElementById('btnOpenTaskModal');
+  if(bOpenModal)bOpenModal.addEventListener('click',()=>{S.taskModalOpen=true;render();setTimeout(()=>{const f=document.getElementById('tmTaskName');if(f)f.focus();},50);});
+  // Task modal bindings
+  const tmOverlay=document.getElementById('taskModalOverlay');
+  const tmClose=document.getElementById('btnCloseTaskModal');
+  const tmCancel=document.getElementById('btnCancelTask');
+  const tmSave=document.getElementById('btnSaveTask');
+  if(tmOverlay)tmOverlay.addEventListener('click',e=>{if(e.target===tmOverlay){S.taskModalOpen=false;render();}});
+  if(tmClose)tmClose.addEventListener('click',()=>{S.taskModalOpen=false;render();});
+  if(tmCancel)tmCancel.addEventListener('click',()=>{S.taskModalOpen=false;render();});
+  // Business toggle in modal
+  const tmBizM=document.getElementById('tmBizMoov');
+  const tmBizD=document.getElementById('tmBizDespatch');
+  if(tmBizM)tmBizM.addEventListener('click',()=>{tmBizM.className='active-moov';tmBizD.className='';});
+  if(tmBizD)tmBizD.addEventListener('click',()=>{tmBizD.className='active-despatch';tmBizM.className='';});
+  // Save task from modal
+  if(tmSave)tmSave.addEventListener('click',()=>{
+    const name=document.getElementById('tmTaskName')?.value||'';
+    const details=document.getElementById('tmTaskDetails')?.value||'';
+    const date=document.getElementById('tmTaskDate')?.value||'';
+    const priority=document.getElementById('tmTaskPriority')?.value||'auto';
+    const biz=document.getElementById('tmBizDespatch')?.className?.includes('active')?'despatch':'moov';
+    addTask(name,date,biz,details,priority);
   });
+  // Enter key in task name field
+  const tmNameInput=document.getElementById('tmTaskName');
+  if(tmNameInput)tmNameInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();tmSave?.click();}});
   document.querySelectorAll('[data-toggle-task]').forEach(el=>el.addEventListener('click',()=>toggleTask(el.dataset.toggleTask)));
   // Task voice input
   const btv=document.getElementById('btnTaskVoice');if(btv)btv.addEventListener('click',()=>{
@@ -2108,7 +2197,7 @@ function bindEvents(){
     const r=new SR();r.lang='en-GB';r.interimResults=false;r.maxAlternatives=1;
     r.onresult=e=>{
       const text=e.results[0][0].transcript;
-      const inp=document.getElementById('taskInput');if(inp)inp.value=text;
+      const inp=document.getElementById('tmTaskName')||document.getElementById('taskInput');if(inp)inp.value=text;
       btv.classList.remove('recording');window._taskRecog=null;
     };
     r.onerror=()=>{btv.classList.remove('recording');window._taskRecog=null;};
