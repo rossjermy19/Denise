@@ -88,7 +88,16 @@ app.get("/api/data", (req, res) => {
 app.patch("/api/tasks/:id", (req, res) => {
   const db = loadDB(); const task = db.tasks.find(t => t.id === req.params.id);
   if (!task) return res.status(404).json({ error: "Not found" });
-  task.status = task.status === "done" ? "open" : "done"; if (task.status === "done") task.due = "Done";
+  // If body has explicit fields, update them (edit mode); otherwise toggle status
+  if (req.body && (req.body.due || req.body.priority || req.body.text || req.body.details || req.body.business)) {
+    if (req.body.due) task.due = req.body.due;
+    if (req.body.priority) task.priority = req.body.priority;
+    if (req.body.text) task.text = req.body.text;
+    if (req.body.details !== undefined) task.details = req.body.details;
+    if (req.body.business) task.business = req.body.business;
+  } else {
+    task.status = task.status === "done" ? "open" : "done"; if (task.status === "done") task.due = "Done";
+  }
   saveDB(db); res.json(task);
 });
 app.post("/api/tasks", (req, res) => {

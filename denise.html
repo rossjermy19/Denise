@@ -595,7 +595,7 @@ const S={
   voiceListening:false,voiceMode:null,voiceTranscript:'',voiceSpeaking:false,
   messages:[{role:'ai',text:"Hi Ross! I'm Denise, your unified PA. I'm connected to Pocket, Gmail and Outlook. Ask me what needs your attention today, or anything else."}],
   chatLoading:false,
-  taskModalOpen:false,
+  taskModalOpen:false,editingTaskId:null,
   syncing:false,syncMsg:null,
   wizStep:1,backendUrl:localStorage.getItem('pa_api_base')||'',
   apiKey:'',keyResult:null,checkingBackend:false,backendErr:'',
@@ -1611,6 +1611,15 @@ async function addTask(text, due, business, details, priority){
   S.tasks=[tmp,...S.tasks];S.newTask='';S.taskModalOpen=false;cacheTasks();render();
   try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim(),due:dueStr,business:biz,details:det,priority:pri})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);cacheTasks();render();}catch{}
 }
+async function updateTask(id, updates){
+  S.tasks=S.tasks.map(t=>t.id===id?{...t,...updates}:t);
+  S.taskModalOpen=false;S.editingTaskId=null;cacheTasks();render();
+  try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(updates)});}catch{}
+}
+function openEditTask(id){
+  S.editingTaskId=id;S.taskModalOpen=true;render();
+  setTimeout(()=>{const f=document.getElementById('tmTaskName');if(f)f.focus();},50);
+}
 function getTaskPriority(due, task){
   if(!due || due==='Done') return 'done';
   // If manual priority is set (not auto), map it
@@ -1779,7 +1788,7 @@ function renderTasksPane(){
       const bizLabel=biz==='despatch'?'DC':'MP';
       return `<div class="task-item" data-task-id="${esc(t.id)}">
         <div class="task-check" data-toggle-task="${esc(t.id)}" style="border-color:${bizColor}"></div>
-        <div style="flex:1;min-width:0">
+        <div style="flex:1;min-width:0;cursor:pointer" data-edit-task="${esc(t.id)}">
           <div class="task-text">${esc(t.text)}</div>
           ${t.details?`<div style="font-size:11px;color:var(--text2);margin-top:2px;line-height:1.3" title="${esc(t.details)}">${esc(t.details.length>50?t.details.slice(0,50)+'...':t.details)}</div>`:''}
           <div style="display:flex;gap:6px;align-items:center;margin-top:2px">
@@ -1787,7 +1796,7 @@ function renderTasksPane(){
             <span class="task-src">${t.source==='email'?'Email':t.source==='pocket'?'Pocket':'Manual'}</span>
           </div>
         </div>
-        <div class="task-due ${p}">${fmtTaskDue(t.due)}</div>
+        <div class="task-due ${p}" style="cursor:pointer" data-edit-task="${esc(t.id)}">${fmtTaskDue(t.due)}</div>
       </div>`;
     }).join('')}
     ${done.length>0?`
@@ -1806,41 +1815,48 @@ function renderTasksPane(){
 }
 function renderTaskModal(){
   if(!S.taskModalOpen) return '';
+  const et = S.editingTaskId ? S.tasks.find(t=>t.id===S.editingTaskId) : null;
+  const isEdit = !!et;
+  const eName = et ? esc(et.text) : '';
+  const eDetails = et ? esc(et.details||'') : '';
+  const eBiz = et ? (et.business||'moov') : 'moov';
+  const eDate = et && et.due && et.due!=='Done' && et.due!=='No date' ? et.due.slice(0,10) : new Date().toISOString().slice(0,10);
+  const ePri = et ? (et.priority||'auto') : 'auto';
   return `<div class="task-modal-overlay" id="taskModalOverlay">
     <div class="task-modal">
       <div class="task-modal-hdr">
-        <h3>Add Task</h3>
+        <h3>${isEdit?'Edit Task':'Add Task'}</h3>
         <button class="task-modal-close" id="btnCloseTaskModal">&times;</button>
       </div>
       <div class="task-modal-body">
         <div class="task-modal-field">
           <label>Task name</label>
-          <input type="text" id="tmTaskName" placeholder="What needs doing?" autofocus />
+          <input type="text" id="tmTaskName" placeholder="What needs doing?" value="${eName}" autofocus />
         </div>
         <div class="task-modal-field">
           <label>Details</label>
-          <textarea id="tmTaskDetails" placeholder="Any extra context or notes..."></textarea>
+          <textarea id="tmTaskDetails" placeholder="Any extra context or notes...">${eDetails}</textarea>
         </div>
         <div class="task-modal-field">
           <label>Business</label>
           <div class="task-biz-toggle">
-            <button id="tmBizMoov" class="active-moov">MOOV</button>
-            <button id="tmBizDespatch">DESPATCH</button>
+            <button id="tmBizMoov" class="${eBiz==='moov'?'active-moov':''}">MOOV</button>
+            <button id="tmBizDespatch" class="${eBiz==='despatch'?'active-despatch':''}">DESPATCH</button>
           </div>
         </div>
         <div class="task-modal-row">
           <div class="task-modal-field">
             <label>Deadline</label>
-            <input type="date" id="tmTaskDate" value="${new Date().toISOString().slice(0,10)}" />
+            <input type="date" id="tmTaskDate" value="${eDate}" />
           </div>
           <div class="task-modal-field">
             <label>Priority</label>
             <select id="tmTaskPriority">
-              <option value="auto">Auto (by date)</option>
-              <option value="urgent">Urgent</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
+              <option value="auto"${ePri==='auto'?' selected':''}>Auto (by date)</option>
+              <option value="urgent"${ePri==='urgent'?' selected':''}>Urgent</option>
+              <option value="high"${ePri==='high'?' selected':''}>High</option>
+              <option value="medium"${ePri==='medium'?' selected':''}>Medium</option>
+              <option value="low"${ePri==='low'?' selected':''}>Low</option>
             </select>
           </div>
         </div>
@@ -1851,7 +1867,7 @@ function renderTaskModal(){
       </div>
       <div class="task-modal-footer">
         <button class="task-modal-cancel" id="btnCancelTask">Cancel</button>
-        <button class="task-modal-save" id="btnSaveTask">Add Task</button>
+        <button class="task-modal-save" id="btnSaveTask">${isEdit?'Save Changes':'Add Task'}</button>
       </div>
     </div>
   </div>`;
@@ -2240,15 +2256,15 @@ function bindEvents(){
   const bat=document.getElementById('btnAddTask');if(bat)bat.addEventListener('click',()=>addTask(document.getElementById('newTask')?.value||''));
   // Tasks pane — open modal
   const bOpenModal=document.getElementById('btnOpenTaskModal');
-  if(bOpenModal)bOpenModal.addEventListener('click',()=>{S.taskModalOpen=true;render();setTimeout(()=>{const f=document.getElementById('tmTaskName');if(f)f.focus();},50);});
+  if(bOpenModal)bOpenModal.addEventListener('click',()=>{S.editingTaskId=null;S.taskModalOpen=true;render();setTimeout(()=>{const f=document.getElementById('tmTaskName');if(f)f.focus();},50);});
   // Task modal bindings
   const tmOverlay=document.getElementById('taskModalOverlay');
   const tmClose=document.getElementById('btnCloseTaskModal');
   const tmCancel=document.getElementById('btnCancelTask');
   const tmSave=document.getElementById('btnSaveTask');
-  if(tmOverlay)tmOverlay.addEventListener('click',e=>{if(e.target===tmOverlay){S.taskModalOpen=false;render();}});
-  if(tmClose)tmClose.addEventListener('click',()=>{S.taskModalOpen=false;render();});
-  if(tmCancel)tmCancel.addEventListener('click',()=>{S.taskModalOpen=false;render();});
+  if(tmOverlay)tmOverlay.addEventListener('click',e=>{if(e.target===tmOverlay){S.taskModalOpen=false;S.editingTaskId=null;render();}});
+  if(tmClose)tmClose.addEventListener('click',()=>{S.taskModalOpen=false;S.editingTaskId=null;render();});
+  if(tmCancel)tmCancel.addEventListener('click',()=>{S.taskModalOpen=false;S.editingTaskId=null;render();});
   // Business toggle in modal
   const tmBizM=document.getElementById('tmBizMoov');
   const tmBizD=document.getElementById('tmBizDespatch');
@@ -2261,12 +2277,17 @@ function bindEvents(){
     const date=document.getElementById('tmTaskDate')?.value||'';
     const priority=document.getElementById('tmTaskPriority')?.value||'auto';
     const biz=document.getElementById('tmBizDespatch')?.className?.includes('active')?'despatch':'moov';
-    addTask(name,date,biz,details,priority);
+    if(S.editingTaskId){
+      updateTask(S.editingTaskId,{text:name,details,due:date,priority,business:biz});
+    } else {
+      addTask(name,date,biz,details,priority);
+    }
   });
   // Enter key in task name field
   const tmNameInput=document.getElementById('tmTaskName');
   if(tmNameInput)tmNameInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();tmSave?.click();}});
   document.querySelectorAll('[data-toggle-task]').forEach(el=>el.addEventListener('click',()=>toggleTask(el.dataset.toggleTask)));
+  document.querySelectorAll('[data-edit-task]').forEach(el=>el.addEventListener('click',()=>openEditTask(el.dataset.editTask)));
   // Task voice input
   const btv=document.getElementById('btnTaskVoice');if(btv)btv.addEventListener('click',()=>{
     if(btv.classList.contains('recording')){
