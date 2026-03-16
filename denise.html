@@ -1818,7 +1818,7 @@ function renderDashTab(overdue,unread){
   <div class="dash-top">
     <!-- Weather -->
     <div class="card">
-      <div class="chdr"><span class="ctitle">UK Weather</span></div>
+      <div class="chdr"><span class="ctitle">UK Weather</span>${S.weather?`<span class="bdg" style="background:var(--bg);color:var(--text2)">${S.weather.temp}° · ${S.weather.chanceOfRain}% rain</span>`:''}</div>
       ${S.weatherLoading?`<div class="ldr"><div class="spinner"></div>Loading weather...</div>`:
         S.weather?`<div style="padding:14px 18px">
           <div style="display:flex;align-items:center;gap:16px">
@@ -1840,7 +1840,7 @@ function renderDashTab(overdue,unread){
     </div>
     <!-- Diary — compact week strip -->
     <div class="card">
-      <div class="chdr"><span class="ctitle">This week</span>${S.calWeekLoading?'<div class="spinner" style="width:12px;height:12px"></div>':''}</div>
+      <div class="chdr"><span class="ctitle">This week</span><div style="display:flex;gap:8px;align-items:center">${S.calWeekLoading?'<div class="spinner" style="width:12px;height:12px"></div>':''}${(S.calEvents.length+S.olCalEvents.length)>0?`<span class="bdg" style="background:var(--accent-dim);color:var(--accent)">${S.calEvents.length+S.olCalEvents.length} today</span>`:''}</div></div>
       ${window._gTok || isOutlookConnected()?`<div class="cal-strip">
         ${[0,1,2,3,4,5,6].map(offset => {
           const d=new Date();d.setDate(d.getDate()+offset);
