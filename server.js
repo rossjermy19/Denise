@@ -95,11 +95,15 @@ app.post("/api/tasks", (req, res) => {
   const db = loadDB();
   const id = req.body.id || ("manual_" + Date.now());
   const source = req.body.source || "manual";
-  // Don't duplicate email tasks
+  // Don't duplicate tasks by ID
+  if(db.tasks.some(t=>t.id===id)) {
+    return res.json(db.tasks.find(t=>t.id===id));
+  }
+  // Don't duplicate email tasks by threadId
   if(source==='email' && req.body.emailThreadId && db.tasks.some(t=>t.emailThreadId===req.body.emailThreadId && t.status!=='done')) {
     return res.json(db.tasks.find(t=>t.emailThreadId===req.body.emailThreadId));
   }
-  db.tasks.unshift({ id, text: req.body.text, due: req.body.due || "Today", status: "open", source, business: req.body.business || "moov", details: req.body.details || "", priority: req.body.priority || "auto", emailThreadId: req.body.emailThreadId || null });
+  db.tasks.unshift({ id, text: req.body.text, due: req.body.due || "Today", status: req.body.status || "open", source, business: req.body.business || "moov", details: req.body.details || "", priority: req.body.priority || "auto", emailThreadId: req.body.emailThreadId || null });
   saveDB(db); res.json(db.tasks[0]);
 });
 app.delete("/api/calls/:id", (req, res) => {
