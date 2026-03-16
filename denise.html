@@ -1483,12 +1483,13 @@ async function toggleTask(id){
   S.tasks=S.tasks.map(t=>t.id===id?{...t,status:t.status==='done'?'open':'done'}:t);render();
   try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH'});}catch{}
 }
-async function addTask(text, due){
+async function addTask(text, due, business){
   if(!text.trim())return;
   const dueStr = due || new Date().toISOString().slice(0,10);
-  const tmp={id:'tmp_'+Date.now(),text:text.trim(),due:dueStr,status:'open',source:'manual'};
+  const biz = business || 'moov';
+  const tmp={id:'tmp_'+Date.now(),text:text.trim(),due:dueStr,status:'open',source:'manual',business:biz};
   S.tasks=[tmp,...S.tasks];S.newTask='';render();
-  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim(),due:dueStr})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);render();}catch{}
+  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim(),due:dueStr,business:biz})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);render();}catch{}
 }
 function getTaskPriority(due){
   if(!due || due==='Done') return 'done';
@@ -1630,7 +1631,7 @@ function renderDash(){
     </div>
   </div>
   <div class="body${S.tab!=='dashboard'?' full':''}">
-    ${S.tab==='dashboard'?`<div class="dash-grid"><div class="dash-main">${renderDashTab(overdue,unread)}</div>${renderTasksPane()}</div>`:S.tab==='gmail'?renderGmailTab():S.tab==='pocket'?renderPocketTab(overdue):renderPATab()}
+    ${S.tab==='dashboard'?renderDashTab(overdue,unread):S.tab==='gmail'?renderGmailTab():S.tab==='pocket'?renderPocketTab(overdue):renderPATab()}
   </div></div>`;
 }
 
@@ -1647,33 +1648,46 @@ function renderTasksPane(){
       <span class="bdg" style="background:var(--accent-dim);color:var(--accent)">${open.length} open</span>
     </div>
     <!-- Add task row -->
-    <div class="task-add-row">
-      <input class="task-add-input" id="taskInput" type="text" placeholder="Add a task..." />
-      <input class="task-date-input" id="taskDate" type="date" value="${todayStr}" title="Deadline" />
-      <button class="task-mic-btn" id="btnTaskVoice" title="Add task by voice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></button>
-      <button class="task-add-btn" id="btnAddTaskNew">Add</button>
+    <div class="task-add-row" style="flex-wrap:wrap">
+      <div style="display:flex;gap:6px;flex:1;min-width:0">
+        <input class="task-add-input" id="taskInput" type="text" placeholder="Add a task..." />
+        <button class="task-mic-btn" id="btnTaskVoice" title="Add task by voice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></button>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;width:100%;margin-top:4px">
+        <input class="task-date-input" id="taskDate" type="date" value="${todayStr}" title="Deadline" style="flex:1" />
+        <button class="task-biz-btn" id="btnTaskBiz" data-biz="moov" title="Business" style="padding:4px 10px;border-radius:var(--r);border:2px solid var(--moov);background:var(--moov-dim);color:var(--moov);font-size:10px;font-family:var(--fd);font-weight:600;cursor:pointer;letter-spacing:0.03em">MOOV</button>
+        <button class="task-add-btn" id="btnAddTaskNew">Add</button>
+      </div>
     </div>
     ${open.length===0&&done.length===0?`<div style="padding:20px 14px;text-align:center;color:var(--muted);font-size:13px">No tasks yet. Add one above or sync from Pocket.</div>`:''}
     ${open.map(t=>{
       const p=getTaskPriority(t.due);
+      const biz=t.business||'moov';
+      const bizColor=biz==='despatch'?'var(--despatch)':'var(--moov)';
+      const bizLabel=biz==='despatch'?'DC':'MP';
       return `<div class="task-item" data-task-id="${esc(t.id)}">
-        <div class="task-check" data-toggle-task="${esc(t.id)}"></div>
+        <div class="task-check" data-toggle-task="${esc(t.id)}" style="border-color:${bizColor}"></div>
         <div style="flex:1;min-width:0">
           <div class="task-text">${esc(t.text)}</div>
-          <div class="task-src">${t.source==='manual'?'Manual':'Pocket'}</div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:2px">
+            <span class="task-src" style="color:${bizColor}">${bizLabel}</span>
+            <span class="task-src">${t.source==='manual'?'Manual':'Pocket'}</span>
+          </div>
         </div>
         <div class="task-due ${p}">${fmtTaskDue(t.due)}</div>
       </div>`;
     }).join('')}
     ${done.length>0?`
       <div style="padding:8px 14px 4px;font-size:11px;font-family:var(--fd);color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;border-top:1px solid var(--border-light)">Completed (${done.length})</div>
-      ${done.slice(0,5).map(t=>`<div class="task-item done" data-task-id="${esc(t.id)}">
-        <div class="task-check checked" data-toggle-task="${esc(t.id)}"></div>
+      ${done.slice(0,5).map(t=>{
+        const biz=t.business||'moov';
+        const bizColor=biz==='despatch'?'var(--despatch)':'var(--moov)';
+        return `<div class="task-item done" data-task-id="${esc(t.id)}">
+        <div class="task-check checked" data-toggle-task="${esc(t.id)}" style="background:${bizColor};border-color:${bizColor}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
         <div style="flex:1;min-width:0">
           <div class="task-text">${esc(t.text)}</div>
-          <div class="task-src">${t.source==='manual'?'Manual':'Pocket'}</div>
         </div>
-      </div>`).join('')}
+      </div>`;}).join('')}
     `:''}
   </div>`;
 }
@@ -1714,6 +1728,9 @@ function renderDashTab(overdue,unread){
     <div class="stat"><div class="slbl">Overdue</div><div class="sval" style="color:var(--danger)">${overdue||0}</div></div>
     <div class="stat"><div class="slbl">Recordings</div><div class="sval" style="color:var(--purple)">${S.stats.totalCalls||0}</div></div>
   </div>
+
+  <!-- Two-column: main content + tasks pane -->
+  <div class="dash-grid"><div class="dash-main">
 
   <!-- Morning briefing: weather + diary -->
   <div class="briefing-grid">
@@ -1827,6 +1844,10 @@ function renderDashTab(overdue,unread){
       }).join('')}
     `}
   </div>
+
+  </div><!-- /dash-main -->
+  ${renderTasksPane()}
+  </div><!-- /dash-grid -->
 
   ${S.calPopupDay?`
   <div class="cal-overlay" id="calOverlay">
@@ -2060,11 +2081,20 @@ function bindEvents(){
   const bat=document.getElementById('btnAddTask');if(bat)bat.addEventListener('click',()=>addTask(document.getElementById('newTask')?.value||''));
   const bat2=document.getElementById('btnAddTask2');if(bat2)bat2.addEventListener('click',()=>addTask(document.getElementById('newTask2')?.value||''));
   // Tasks pane (dashboard)
-  const ti=document.getElementById('taskInput');const td=document.getElementById('taskDate');
+  const ti=document.getElementById('taskInput');const td=document.getElementById('taskDate');const bb=document.getElementById('btnTaskBiz');
+  function getTaskBiz(){return bb?.dataset?.biz||'moov';}
   if(ti){
-    ti.addEventListener('keydown',e=>{if(e.key==='Enter'){addTask(ti.value,td?.value);ti.value='';}});
+    ti.addEventListener('keydown',e=>{if(e.key==='Enter'){addTask(ti.value,td?.value,getTaskBiz());ti.value='';}});
   }
-  const batn=document.getElementById('btnAddTaskNew');if(batn)batn.addEventListener('click',()=>{const i=document.getElementById('taskInput');const d=document.getElementById('taskDate');if(i){addTask(i.value,d?.value);i.value='';}});
+  const batn=document.getElementById('btnAddTaskNew');if(batn)batn.addEventListener('click',()=>{const i=document.getElementById('taskInput');const d=document.getElementById('taskDate');if(i){addTask(i.value,d?.value,getTaskBiz());i.value='';}});
+  // Business toggle: click to switch between Moov and Despatch
+  if(bb)bb.addEventListener('click',()=>{
+    const current=bb.dataset.biz||'moov';
+    const next=current==='moov'?'despatch':'moov';
+    bb.dataset.biz=next;
+    if(next==='despatch'){bb.textContent='DESPATCH';bb.style.borderColor='var(--despatch)';bb.style.background='var(--despatch-dim)';bb.style.color='var(--despatch)';}
+    else{bb.textContent='MOOV';bb.style.borderColor='var(--moov)';bb.style.background='var(--moov-dim)';bb.style.color='var(--moov)';}
+  });
   document.querySelectorAll('[data-toggle-task]').forEach(el=>el.addEventListener('click',()=>toggleTask(el.dataset.toggleTask)));
   // Task voice input
   const btv=document.getElementById('btnTaskVoice');if(btv)btv.addEventListener('click',()=>{

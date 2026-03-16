@@ -93,7 +93,7 @@ app.patch("/api/tasks/:id", (req, res) => {
 });
 app.post("/api/tasks", (req, res) => {
   const db = loadDB();
-  db.tasks.unshift({ id: "manual_" + Date.now(), text: req.body.text, due: req.body.due || "Today", status: "open", source: "manual" });
+  db.tasks.unshift({ id: "manual_" + Date.now(), text: req.body.text, due: req.body.due || "Today", status: "open", source: "manual", business: req.body.business || "moov" });
   saveDB(db); res.json(db.tasks[0]);
 });
 app.delete("/api/calls/:id", (req, res) => {
