@@ -566,6 +566,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .erow .src-badge{margin-left:auto;margin-right:8px}
 .priority-stripe.moov{background:var(--moov) !important}
 .priority-stripe.despatch{background:var(--despatch) !important}
+
+/* Sidebar quick-links */
+.side-rail{position:fixed;left:0;top:58px;bottom:0;width:48px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:14px;z-index:90}
+.side-rail a{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;transition:all .15s;opacity:.7}
+.side-rail a:hover{opacity:1;background:var(--bg);transform:scale(1.08)}
+.side-rail a img{width:26px;height:26px;border-radius:4px;object-fit:contain}
+.header{padding-left:62px !important}
+.body{margin-left:48px}
+@media(max-width:900px){.side-rail{display:none}.header{padding-left:28px !important}.body{margin-left:0}}
 </style>
 </head>
 <body>
@@ -1721,6 +1730,10 @@ function renderDash(){
   const unread=S.emails.filter(e=>e.is_unread).length;
   const today=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
   return `<div>
+  <div class="side-rail">
+    <a href="https://my.dpd.co.uk/logon?carrier=1&returnUrl=/" target="_blank" title="DPD"><img src="https://logo.clearbit.com/dpd.co.uk" alt="DPD"/></a>
+    <a href="https://id.ups.com/u/login/identifier?state=hKFo2SBvZlFaRXkweHNHU2VrVG85aGFGaFhCX0V0c0ptRTl6VqFur3VuaXZlcnNhbC1sb2dpbqN0aWTZIElHcm52NnJGbG42QlFkUzE4ci1WU3dfVG5mTnE3dHlDo2NpZNkgaHdMRVROQnNxTWNzemtmRVA5RVNHaEZZMjI1YTlvZmM&ui_locales=en" target="_blank" title="UPS"><img src="https://logo.clearbit.com/ups.com" alt="UPS"/></a>
+  </div>
   <div class="header">
     <div><div class="logo">DENISE <span>/ ROSS'S PA</span></div><div class="dateline">${today.toUpperCase()}</div></div>
     <div class="nav">
