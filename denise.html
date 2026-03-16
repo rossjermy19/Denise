@@ -59,10 +59,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 /* ── Body / content ── */
 .body{padding:16px;max-width:1200px;margin:0 auto;width:100%}
 .body.full{max-width:100%;padding:14px 18px}
-.dash-top{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px;align-items:start}
-.dash-top>.card,.dash-top>.dash-tasks{min-width:0;margin-bottom:0}
-.dash-tasks{position:sticky;top:16px}
-@media(max-width:900px){.dash-top{grid-template-columns:1fr}.dash-tasks{position:static}}
+.dash-top{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px;align-items:stretch}
+.dash-top>.card,.dash-top>.dash-tasks-wrap{min-width:0;margin-bottom:0}
+.dash-tasks-wrap .card{margin-bottom:0}
+@media(max-width:900px){.dash-top{grid-template-columns:1fr}}
 
 /* ── Stats ── */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
@@ -1673,7 +1673,7 @@ function renderTasksPane(){
   const done = S.tasks.filter(t=>t.status==='done');
   const pOrder={overdue:0,today:1,soon:2,later:3};
   open.sort((a,b)=>(pOrder[getTaskPriority(a.due,a)]??4)-(pOrder[getTaskPriority(b.due,b)]??4));
-  return `<div class="card dash-tasks">
+  return `<div class="dash-tasks-wrap"><div class="card dash-tasks">
     <div class="chdr">
       <span class="ctitle">Tasks</span>
       <div style="display:flex;gap:8px;align-items:center">
@@ -1764,7 +1764,8 @@ function renderTasksPane(){
       </div>
     </div>
   </div>
-  `:''}`;
+  `:''}
+  </div>`;
 }
 
 function renderDashTab(overdue,unread){
