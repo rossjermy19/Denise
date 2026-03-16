@@ -59,10 +59,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 /* ── Body / content ── */
 .body{padding:16px;max-width:1200px;margin:0 auto;width:100%}
 .body.full{max-width:100%;padding:14px 18px}
-.dash-grid{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
-.dash-main{min-width:0}
+.dash-top{display:grid;grid-template-columns:1fr 1fr 340px;gap:14px;margin-bottom:14px;align-items:start}
+.dash-top>.card,.dash-top>.dash-tasks{min-width:0}
 .dash-tasks{position:sticky;top:16px}
-@media(max-width:900px){.dash-grid{grid-template-columns:1fr}.dash-tasks{position:static}}
+@media(max-width:900px){.dash-top{grid-template-columns:1fr}.dash-tasks{position:static}}
 
 /* ── Stats ── */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
@@ -270,8 +270,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .task-plus-btn:hover{background:var(--accent);color:white;border-color:var(--accent)}
 
 /* ── Dashboard briefing grid ── */
-.briefing-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-@media(max-width:640px){.briefing-grid{grid-template-columns:1fr}}
+/* briefing-grid no longer used — Weather + This Week + Tasks are in dash-top */
 
 /* ── Gmail layout ── */
 .gmail-layout{display:grid;grid-template-columns:1fr;gap:10px;align-items:start}
@@ -1805,11 +1804,8 @@ function renderDashTab(overdue,unread){
     <div class="stat"><div class="slbl">Recordings</div><div class="sval" style="color:var(--purple)">${S.stats.totalCalls||0}</div></div>
   </div>
 
-  <!-- Two-column: main content + tasks pane -->
-  <div class="dash-grid"><div class="dash-main">
-
-  <!-- Morning briefing: weather + diary -->
-  <div class="briefing-grid">
+  <!-- Top row: Weather + This Week + Tasks (aligned) -->
+  <div class="dash-top">
     <!-- Weather -->
     <div class="card">
       <div class="chdr"><span class="ctitle">UK Weather</span></div>
@@ -1852,6 +1848,8 @@ function renderDashTab(overdue,unread){
       S.calError?`<div style="padding:14px 18px"><div style="font-size:13px;color:var(--danger);margin-bottom:6px">${esc(S.calError)}</div><a href="https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=597561744602" target="_blank" style="font-size:12px;color:var(--accent)">Open Google Cloud Console ↗</a></div>`:
       `<div style="padding:14px 18px;font-size:13px;color:var(--muted)">Load Gmail to connect your calendar.</div>`}
     </div>
+    <!-- Tasks pane -->
+    ${renderTasksPane()}
   </div>
 
   <!-- Priority emails section -->
@@ -1921,9 +1919,7 @@ function renderDashTab(overdue,unread){
     `}
   </div>
 
-  </div><!-- /dash-main -->
-  ${renderTasksPane()}
-  </div><!-- /dash-grid -->
+  <!-- end of main content -->
 
   ${S.calPopupDay?`
   <div class="cal-overlay" id="calOverlay">
