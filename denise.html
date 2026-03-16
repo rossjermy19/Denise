@@ -1389,6 +1389,7 @@ needsReply = 1-based indexes. Most inboxes should have 0-3 items flagged. If not
         fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(task)}).catch(()=>{});
         console.log('[Denise] Auto-created task from email:', a.task, '(thread:', em.threadId, ')');
       }
+      cacheTasks();
     } else {
       console.warn('[Denise] Triage: no valid JSON found in response');
       // Default: nothing needs reply
@@ -1548,13 +1549,31 @@ async function forceSyncPocket(){
   syncPocket();
 }
 
+function cacheTasks(){ localStorage.setItem('pa_tasks_cache', JSON.stringify(S.tasks)); }
 async function fetchData(){
   try{
     const res=await fetch(`${API()}/api/data`);
     const d=await res.json();
     console.log('[Denise] fetchData:', d.tasks?.length||0, 'tasks,', d.calls?.length||0, 'recordings');
-    S.tasks=d.tasks||[];S.calls=d.calls||[];S.stats=d.stats||{};
-    if(!S.taskModalOpen) render(); // Don't re-render while task modal is open (would wipe input values)
+    S.calls=d.calls||[];S.stats=d.stats||{};
+    // Tasks: use backend data if it has tasks, otherwise restore from localStorage cache
+    if((d.tasks||[]).length > 0){
+      S.tasks=d.tasks;
+      cacheTasks();
+    } else {
+      const cached = JSON.parse(localStorage.getItem('pa_tasks_cache')||'[]');
+      if(cached.length > 0){
+        console.log('[Denise] Backend has 0 tasks but localStorage has', cached.length, '— restoring');
+        S.tasks=cached;
+        // Push cached tasks back to backend
+        for(const t of cached){
+          fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)}).catch(()=>{});
+        }
+      } else {
+        S.tasks=[];
+      }
+    }
+    if(!S.taskModalOpen) render();
     // Auto-resync from Pocket if backend lost data (Railway redeploy wipes db.json)
     if(S.calls.length===0 && localStorage.getItem('pa_pocket_key') && !S.syncing){
       console.log('[Denise] No recordings on backend but Pocket key exists — auto-resyncing');
@@ -1563,7 +1582,7 @@ async function fetchData(){
   }catch(e){ console.error('[Denise] fetchData failed:', e); }
 }
 async function toggleTask(id){
-  S.tasks=S.tasks.map(t=>t.id===id?{...t,status:t.status==='done'?'open':'done'}:t);render();
+  S.tasks=S.tasks.map(t=>t.id===id?{...t,status:t.status==='done'?'open':'done'}:t);cacheTasks();render();
   try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH'});}catch{}
 }
 async function addTask(text, due, business, details, priority){
@@ -1573,8 +1592,8 @@ async function addTask(text, due, business, details, priority){
   const det = details?.trim() || '';
   const pri = priority || 'auto';
   const tmp={id:'tmp_'+Date.now(),text:text.trim(),due:dueStr,status:'open',source:'manual',business:biz,details:det,priority:pri};
-  S.tasks=[tmp,...S.tasks];S.newTask='';S.taskModalOpen=false;render();
-  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim(),due:dueStr,business:biz,details:det,priority:pri})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);render();}catch{}
+  S.tasks=[tmp,...S.tasks];S.newTask='';S.taskModalOpen=false;cacheTasks();render();
+  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim(),due:dueStr,business:biz,details:det,priority:pri})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);cacheTasks();render();}catch{}
 }
 function getTaskPriority(due, task){
   if(!due || due==='Done') return 'done';
