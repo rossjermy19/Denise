@@ -1091,15 +1091,29 @@ async function fetchEmails(){
     S.emails = [];
     S.emailsError = e.message;
   }
-  // Restore previous triage flags onto refreshed emails so they stay visible
+  // Restore triage flags — first from in-memory (background refresh), then from localStorage (page refresh)
+  const cachedTriage = JSON.parse(localStorage.getItem('pa_triage_cache')||'{}');
   S.emails.forEach(e=>{
-    const prev = prevEmailFlags[e.threadId];
+    const prev = prevEmailFlags[e.threadId] || cachedTriage[e.threadId];
     if(prev){ e.needsReply=prev.needsReply; e.alertPriority=prev.alertPriority; }
   });
+  // Restore emailAlerts from cache if we had none in memory
+  if(S.emailAlerts.length===0){
+    const cachedAlerts = JSON.parse(localStorage.getItem('pa_triage_alerts')||'[]');
+    if(cachedAlerts.length>0) S.emailAlerts=cachedAlerts;
+  }
   S.emailsLoading = false; render();
   const newIds = S.emails.map(e=>e.threadId).join(',');
-  const emailsChanged = newIds !== prevIds;
-  if(S.emails.length > 0 && (!S.alertsGenerated || emailsChanged)) generateAlerts();
+  const cachedIds = localStorage.getItem('pa_triage_ids')||'';
+  const emailsChanged = newIds !== cachedIds;
+  // Only re-triage if the actual thread IDs changed from what we last triaged
+  if(S.emails.length > 0 && emailsChanged){
+    console.log('[Denise] Email threads changed — re-triaging');
+    generateAlerts();
+  } else if(S.emails.length > 0){
+    console.log('[Denise] Email threads unchanged — using cached triage');
+    S.alertsGenerated=true;
+  }
   // Also fetch calendar now we have a Google token
   if(window._gTok && S.calEvents.length === 0){ fetchCalendar(); fetchCalendarWeek(); }
 }
@@ -1364,7 +1378,15 @@ needsReply = 1-based indexes. Most inboxes should have 0-3 items flagged. If not
     S.emails.forEach((e,i)=>{ e.needsReply=false; e.alertPriority=null; });
     S.emailAlerts=[];
   }
-  S.alertsLoading=false;render();
+  S.alertsLoading=false;
+  // Cache triage results in localStorage so they survive page refreshes
+  const triageCache = {};
+  S.emails.forEach(e=>{ if(e.needsReply) triageCache[e.threadId]={needsReply:true,alertPriority:e.alertPriority}; });
+  localStorage.setItem('pa_triage_cache', JSON.stringify(triageCache));
+  localStorage.setItem('pa_triage_alerts', JSON.stringify(S.emailAlerts));
+  localStorage.setItem('pa_triage_ids', S.emails.map(e=>e.threadId).join(','));
+  console.log('[Denise] Triage cached:', Object.keys(triageCache).length, 'flagged');
+  render();
 }
 
 async function draftReply(email){
