@@ -568,11 +568,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .priority-stripe.despatch{background:var(--despatch) !important}
 
 /* Sidebar quick-links */
-.side-rail{position:fixed;left:0;top:58px;bottom:0;width:48px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:14px;z-index:90}
-.side-rail a{display:flex;align-items:center;justify-content:center;width:40px;height:28px;border-radius:6px;transition:all .15s;opacity:.75;text-decoration:none}
-.side-rail a:hover{opacity:1;background:var(--bg);transform:scale(1.1)}
-.header{padding-left:62px !important}
-.body{margin-left:48px}
+.side-rail{position:fixed;left:0;top:58px;bottom:0;width:96px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:14px;z-index:90}
+.side-rail a{display:flex;align-items:center;justify-content:center;width:72px;height:36px;border-radius:6px;transition:all .15s;opacity:.75;text-decoration:none}
+.side-rail a:hover{opacity:1;background:var(--bg);transform:scale(1.05)}
+.side-rail a svg{width:64px;height:28px}
+.header{padding-left:110px !important}
+.body{margin-left:96px}
 @media(max-width:900px){.side-rail{display:none}.header{padding-left:28px !important}.body{margin-left:0}}
 </style>
 </head>
