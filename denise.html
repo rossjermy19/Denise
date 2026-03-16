@@ -57,8 +57,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .smsg{font-family:var(--fd);font-size:11px;color:var(--muted)}
 
 /* ── Body / content ── */
-.body{padding:24px;max-width:880px;margin:0 auto;width:100%}
+.body{padding:16px;max-width:1200px;margin:0 auto;width:100%}
 .body.full{max-width:100%;padding:14px 18px}
+.dash-grid{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+.dash-main{min-width:0}
+.dash-tasks{position:sticky;top:16px}
+@media(max-width:900px){.dash-grid{grid-template-columns:1fr}.dash-tasks{position:static}}
 
 /* ── Stats ── */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
@@ -210,6 +214,34 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .cal-popup-att{font-size:11px;color:var(--muted);margin-top:2px}
 .cal-popup-join{font-size:11px;font-family:var(--fd);color:var(--accent);text-decoration:none;flex-shrink:0;padding-top:2px}
 
+/* ── Tasks pane ── */
+.task-item{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border-light);transition:background .15s}
+.task-item:last-child{border-bottom:none}
+.task-item:hover{background:var(--bg)}
+.task-item.done{opacity:0.5}
+.task-item.done .task-text{text-decoration:line-through}
+.task-check{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);cursor:pointer;flex-shrink:0;margin-top:1px;transition:all .15s;display:flex;align-items:center;justify-content:center}
+.task-check:hover{border-color:var(--accent)}
+.task-check.checked{background:var(--moov);border-color:var(--moov);color:white}
+.task-check.checked::after{content:'✓';font-size:11px}
+.task-text{font-size:13px;color:var(--text);line-height:1.4;flex:1;min-width:0}
+.task-due{font-size:10px;font-family:var(--fd);font-weight:500;padding:2px 7px;border-radius:10px;flex-shrink:0;white-space:nowrap}
+.task-due.overdue{background:#FEE2E2;color:#DC2626}
+.task-due.today{background:#FEF3C7;color:#D97706}
+.task-due.soon{background:#DBEAFE;color:#2563EB}
+.task-due.later{background:var(--bg);color:var(--muted)}
+.task-src{font-size:9px;font-family:var(--fd);color:var(--muted);text-transform:uppercase;letter-spacing:0.04em}
+.task-add-row{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border-light);align-items:center}
+.task-add-input{flex:1;padding:8px 12px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--body);outline:none}
+.task-add-input:focus{border-color:var(--accent)}
+.task-add-input::placeholder{color:var(--muted)}
+.task-date-input{padding:6px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;font-family:var(--fd);outline:none;width:120px}
+.task-mic-btn{width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+.task-mic-btn:hover{border-color:var(--accent);color:var(--accent)}
+.task-mic-btn.recording{background:var(--danger);border-color:var(--danger);color:white;animation:pulse 1s infinite}
+.task-add-btn{padding:6px 14px;border-radius:var(--r);border:none;background:var(--accent);color:white;font-size:12px;font-family:var(--fb);cursor:pointer;font-weight:500;flex-shrink:0}
+.task-add-btn:hover{opacity:0.9}
+
 /* ── Dashboard briefing grid ── */
 .briefing-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
 @media(max-width:640px){.briefing-grid{grid-template-columns:1fr}}
@@ -344,6 +376,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 
   /* Dashboard briefing grid: stack */
   .body>[style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr !important}
+
+  /* Tasks pane on mobile */
+  .task-add-row{flex-wrap:wrap;gap:6px}
+  .task-date-input{width:100%;order:3}
 
   /* Cards */
   .card{border-radius:var(--radius);margin-bottom:10px}
@@ -1401,24 +1437,6 @@ async function sendReply(email){
   }
 }
 
-async function toggleTask(id){
-  S.tasks=S.tasks.map(t=>t.id===id?{...t,status:t.status==='done'?'open':'done'}:t);render();
-  try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH'});}catch{}
-}
-async function addTask(text){
-  if(!text.trim())return;
-  const tmp={id:'tmp_'+Date.now(),text:text.trim(),due:'Today',status:'open',source:'manual'};
-  S.tasks=[tmp,...S.tasks];S.newTask='';render();
-  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim()})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);render();}catch{}
-}
-async function deleteCall(id){
-  const call=S.calls.find(c=>c.id===id);
-  if(!confirm(`Remove "${call?.title||'this recording'}" from Denise?\n\nThis will not delete it from your Pocket app.`))return;
-  S.calls=S.calls.filter(c=>c.id!==id);S.tasks=S.tasks.filter(t=>t.recordingId!==id);
-  if(S.selectedCall?.id===id)S.selectedCall=null;
-  S.stats={...S.stats,totalCalls:S.calls.length};render();
-  try{await fetch(`${API()}/api/calls/${id}`,{method:'DELETE'});await fetchData();}catch{await fetchData();}
-}
 async function syncPocket(){
   S.syncing=true;S.syncMsg='Fetching from Pocket...';render();
   try{
@@ -1465,11 +1483,37 @@ async function toggleTask(id){
   S.tasks=S.tasks.map(t=>t.id===id?{...t,status:t.status==='done'?'open':'done'}:t);render();
   try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH'});}catch{}
 }
-async function addTask(text){
+async function addTask(text, due){
   if(!text.trim())return;
-  const tmp={id:'tmp_'+Date.now(),text:text.trim(),due:'Today',status:'open',source:'manual'};
+  const dueStr = due || new Date().toISOString().slice(0,10);
+  const tmp={id:'tmp_'+Date.now(),text:text.trim(),due:dueStr,status:'open',source:'manual'};
   S.tasks=[tmp,...S.tasks];S.newTask='';render();
-  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim()})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);render();}catch{}
+  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim(),due:dueStr})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);render();}catch{}
+}
+function getTaskPriority(due){
+  if(!due || due==='Done') return 'done';
+  // Try to parse as date
+  const d = new Date(due);
+  if(isNaN(d)) return 'later';
+  const now = new Date(); now.setHours(0,0,0,0);
+  const diff = Math.floor((d - now) / 86400000);
+  if(diff < 0) return 'overdue';
+  if(diff === 0) return 'today';
+  if(diff <= 3) return 'soon';
+  return 'later';
+}
+function fmtTaskDue(due){
+  if(!due || due==='Done') return 'Done';
+  const d = new Date(due);
+  if(isNaN(d)){return due;}
+  const now = new Date(); now.setHours(0,0,0,0);
+  const diff = Math.floor((d - now) / 86400000);
+  if(diff < -1) return Math.abs(diff) + 'd overdue';
+  if(diff === -1) return 'Yesterday';
+  if(diff === 0) return 'Today';
+  if(diff === 1) return 'Tomorrow';
+  if(diff <= 7) return d.toLocaleDateString('en-GB',{weekday:'short'});
+  return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
 }
 async function deleteCall(id){
   const call=S.calls.find(c=>c.id===id);
@@ -1586,8 +1630,52 @@ function renderDash(){
     </div>
   </div>
   <div class="body${S.tab!=='dashboard'?' full':''}">
-    ${S.tab==='dashboard'?renderDashTab(overdue,unread):S.tab==='gmail'?renderGmailTab():S.tab==='pocket'?renderPocketTab(overdue):renderPATab()}
+    ${S.tab==='dashboard'?`<div class="dash-grid"><div class="dash-main">${renderDashTab(overdue,unread)}</div>${renderTasksPane()}</div>`:S.tab==='gmail'?renderGmailTab():S.tab==='pocket'?renderPocketTab(overdue):renderPATab()}
   </div></div>`;
+}
+
+function renderTasksPane(){
+  const open = S.tasks.filter(t=>t.status!=='done');
+  const done = S.tasks.filter(t=>t.status==='done');
+  // Sort open tasks: overdue first, then today, then soon, then later
+  const pOrder={overdue:0,today:1,soon:2,later:3};
+  open.sort((a,b)=>(pOrder[getTaskPriority(a.due)]??4)-(pOrder[getTaskPriority(b.due)]??4));
+  const todayStr = new Date().toISOString().slice(0,10);
+  return `<div class="card dash-tasks">
+    <div class="chdr">
+      <span class="ctitle">Tasks</span>
+      <span class="bdg" style="background:var(--accent-dim);color:var(--accent)">${open.length} open</span>
+    </div>
+    <!-- Add task row -->
+    <div class="task-add-row">
+      <input class="task-add-input" id="taskInput" type="text" placeholder="Add a task..." />
+      <input class="task-date-input" id="taskDate" type="date" value="${todayStr}" title="Deadline" />
+      <button class="task-mic-btn" id="btnTaskVoice" title="Add task by voice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></button>
+      <button class="task-add-btn" id="btnAddTaskNew">Add</button>
+    </div>
+    ${open.length===0&&done.length===0?`<div style="padding:20px 14px;text-align:center;color:var(--muted);font-size:13px">No tasks yet. Add one above or sync from Pocket.</div>`:''}
+    ${open.map(t=>{
+      const p=getTaskPriority(t.due);
+      return `<div class="task-item" data-task-id="${esc(t.id)}">
+        <div class="task-check" data-toggle-task="${esc(t.id)}"></div>
+        <div style="flex:1;min-width:0">
+          <div class="task-text">${esc(t.text)}</div>
+          <div class="task-src">${t.source==='manual'?'Manual':'Pocket'}</div>
+        </div>
+        <div class="task-due ${p}">${fmtTaskDue(t.due)}</div>
+      </div>`;
+    }).join('')}
+    ${done.length>0?`
+      <div style="padding:8px 14px 4px;font-size:11px;font-family:var(--fd);color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;border-top:1px solid var(--border-light)">Completed (${done.length})</div>
+      ${done.slice(0,5).map(t=>`<div class="task-item done" data-task-id="${esc(t.id)}">
+        <div class="task-check checked" data-toggle-task="${esc(t.id)}"></div>
+        <div style="flex:1;min-width:0">
+          <div class="task-text">${esc(t.text)}</div>
+          <div class="task-src">${t.source==='manual'?'Manual':'Pocket'}</div>
+        </div>
+      </div>`).join('')}
+    `:''}
+  </div>`;
 }
 
 function renderDashTab(overdue,unread){
@@ -1971,6 +2059,32 @@ function bindEvents(){
   const nt2=document.getElementById('newTask2');if(nt2)nt2.addEventListener('keydown',e=>{if(e.key==='Enter')addTask(nt2.value);});
   const bat=document.getElementById('btnAddTask');if(bat)bat.addEventListener('click',()=>addTask(document.getElementById('newTask')?.value||''));
   const bat2=document.getElementById('btnAddTask2');if(bat2)bat2.addEventListener('click',()=>addTask(document.getElementById('newTask2')?.value||''));
+  // Tasks pane (dashboard)
+  const ti=document.getElementById('taskInput');const td=document.getElementById('taskDate');
+  if(ti){
+    ti.addEventListener('keydown',e=>{if(e.key==='Enter'){addTask(ti.value,td?.value);ti.value='';}});
+  }
+  const batn=document.getElementById('btnAddTaskNew');if(batn)batn.addEventListener('click',()=>{const i=document.getElementById('taskInput');const d=document.getElementById('taskDate');if(i){addTask(i.value,d?.value);i.value='';}});
+  document.querySelectorAll('[data-toggle-task]').forEach(el=>el.addEventListener('click',()=>toggleTask(el.dataset.toggleTask)));
+  // Task voice input
+  const btv=document.getElementById('btnTaskVoice');if(btv)btv.addEventListener('click',()=>{
+    if(btv.classList.contains('recording')){
+      if(window._taskRecog){window._taskRecog.stop();window._taskRecog=null;}
+      btv.classList.remove('recording');
+      return;
+    }
+    if(!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)){alert('Speech recognition not supported in this browser');return;}
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    const r=new SR();r.lang='en-GB';r.interimResults=false;r.maxAlternatives=1;
+    r.onresult=e=>{
+      const text=e.results[0][0].transcript;
+      const inp=document.getElementById('taskInput');if(inp)inp.value=text;
+      btv.classList.remove('recording');window._taskRecog=null;
+    };
+    r.onerror=()=>{btv.classList.remove('recording');window._taskRecog=null;};
+    r.onend=()=>{btv.classList.remove('recording');window._taskRecog=null;};
+    window._taskRecog=r;r.start();btv.classList.add('recording');
+  });
   // Recordings
   document.querySelectorAll('[data-call]').forEach(r=>{r.addEventListener('click',()=>{const c=S.calls.find(x=>x.id===r.dataset.call);S.selectedCall=S.selectedCall?.id===r.dataset.call?null:c;render();});});
   document.querySelectorAll('[data-delete]').forEach(b=>{b.addEventListener('click',e=>{e.stopPropagation();deleteCall(b.dataset.delete);});});
