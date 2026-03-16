@@ -997,6 +997,9 @@ async function fetchEmails(){
   if(S.emailsLoading) { console.log('[Denise] fetchEmails already in progress, skipping'); return; }
   const prevIds = S.emails.map(e=>e.threadId).join(',');
   const isRefresh = S.emails.length > 0;
+  // Preserve existing triage flags so they survive a background refresh
+  const prevEmailFlags = {};
+  S.emails.forEach(e=>{ if(e.needsReply) prevEmailFlags[e.threadId]={needsReply:true,alertPriority:e.alertPriority}; });
   S.emailsLoading=true;S.emailsError=null;
   if(!isRefresh) render(); // only show loading spinner on first load, not refreshes
   try{
@@ -1088,6 +1091,11 @@ async function fetchEmails(){
     S.emails = [];
     S.emailsError = e.message;
   }
+  // Restore previous triage flags onto refreshed emails so they stay visible
+  S.emails.forEach(e=>{
+    const prev = prevEmailFlags[e.threadId];
+    if(prev){ e.needsReply=prev.needsReply; e.alertPriority=prev.alertPriority; }
+  });
   S.emailsLoading = false; render();
   const newIds = S.emails.map(e=>e.threadId).join(',');
   const emailsChanged = newIds !== prevIds;
@@ -1270,6 +1278,9 @@ async function fetchWeather(){
 
 async function generateAlerts(){
   const isRetriage = S.alertsGenerated;
+  // Save existing flags so we can keep showing them during background re-triage
+  const prevFlags = {};
+  S.emails.forEach(e=>{ if(e.needsReply) prevFlags[e.threadId]={needsReply:true,alertPriority:e.alertPriority}; });
   S.alertsLoading=true;S.alertsGenerated=true;
   if(!isRetriage) render(); // only show loading on first triage, not background re-triage
   try{
@@ -2264,6 +2275,11 @@ if(isSetup()){
   if(savedTok && savedExp > Date.now()){
     console.log('[Denise] Found cached token, auto-loading Gmail + Calendar');
     fetchEmails(); // getGoogleToken() inside will validate & use the cached token
+    // Background refresh Gmail every 15 minutes
+    setInterval(()=>{
+      console.log('[Denise] 15-min background Gmail refresh');
+      fetchEmails();
+    }, 15 * 60 * 1000);
   }
   // Auto-load Outlook if backend is configured (IMAP/ICS)
   setTimeout(async()=>{
