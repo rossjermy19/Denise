@@ -910,12 +910,14 @@ function _clearGoogleToken(){
   localStorage.removeItem('pa_gmail_token');
   localStorage.removeItem('pa_gmail_token_exp');
 }
-async function _requestFreshToken(){
+async function _requestFreshToken(opts){
+  const usePopup = !opts?.silent;
   if(!window.google || !window.google.accounts) throw new Error('Google sign-in still loading — please wait a moment and try again');
   const token = await new Promise((resolve, reject) => {
     const client = google.accounts.oauth2.initTokenClient({
       client_id: '597561744602-3pmav3dbg17itvh5d7kgr1ddil9ii548.apps.googleusercontent.com',
       scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.readonly',
+      prompt: usePopup ? '' : 'none',
       callback: (resp) => {
         console.log('[Denise] OAuth callback:', resp.error || 'OK', 'token?', !!resp.access_token);
         if(resp.error){ reject(new Error('Google sign-in error: ' + resp.error)); return; }
@@ -927,10 +929,10 @@ async function _requestFreshToken(){
         reject(new Error('Google sign-in failed: ' + (err.type || '') + ' ' + (err.message||'')));
       }
     });
-    client.requestAccessToken();
+    client.requestAccessToken({prompt: usePopup ? '' : 'none'});
   });
   _saveGoogleToken(token);
-  console.log('[Denise] Fresh token obtained');
+  console.log('[Denise] Fresh token obtained', usePopup ? '(popup)' : '(silent)');
   return token;
 }
 async function getGoogleToken(opts){
@@ -966,20 +968,21 @@ async function getGoogleToken(opts){
   }
   return _requestFreshToken();
 }
-// Proactive token refresh — runs every 45 min to get a new token before the old one expires
+// Proactive token refresh — runs every 10 min, silently renews when <15 min left
 setInterval(async()=>{
   if(!window._gTok) return; // no active session
   const remaining = window._gExp - Date.now();
   if(remaining < 15*60*1000){ // less than 15 min left
-    console.log('[Denise] Token expiring soon, proactively refreshing...');
+    console.log('[Denise] Token expiring soon, attempting silent refresh...');
     try{
-      await _requestFreshToken();
-      console.log('[Denise] Token proactively refreshed');
+      await _requestFreshToken({silent: true});
+      console.log('[Denise] Token silently refreshed');
     }catch(e){
-      console.warn('[Denise] Proactive token refresh failed (will retry):', e.message);
+      // Silent refresh failed — that's OK, user will re-auth on next manual action
+      console.warn('[Denise] Silent token refresh failed (user will re-auth on next action):', e.message);
     }
   }
-}, 45*60*1000);
+}, 10*60*1000);
 
 // ── Outlook via backend IMAP/ICS (no Azure admin needed) ──
 let _outlookConnected = false;
