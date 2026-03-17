@@ -1128,6 +1128,8 @@ async function fetchEmails(){
     console.log('[Denise] Email threads unchanged — using cached triage');
     S.alertsGenerated=true;
   }
+  // Auto-resolve email tasks whose threads disappeared from inbox
+  if(S.emails.length > 0) checkEmailTasksResolved();
   // Also fetch calendar now we have a Google token
   if(window._gTok && S.calEvents.length === 0){ fetchCalendar(); fetchCalendarWeek(); }
 }
@@ -1472,6 +1474,8 @@ async function trashEmail(email){
     S.selectedEmail = null;
     S.selectedEmailIdx = null;
     S.composingReply = null;
+    // Auto-resolve any tasks created from this email thread
+    resolveEmailTask(email.threadId, 'Email deleted');
     render();
   }catch(e){
     console.error('[Denise] Trash email failed:', e);
@@ -1520,6 +1524,8 @@ async function sendReply(email){
     S.composingReply = null;
     S.replyDraft = '';
     S.sendSuccess = email.id;
+    // Auto-resolve task from this email since we replied
+    resolveEmailTask(email.threadId, 'Replied');
     render();
     setTimeout(()=>{ S.sendSuccess=null; render(); }, 3000);
   }catch(e){
@@ -1615,6 +1621,29 @@ async function updateTask(id, updates){
   S.tasks=S.tasks.map(t=>t.id===id?{...t,...updates}:t);
   S.taskModalOpen=false;S.editingTaskId=null;cacheTasks();render();
   try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(updates)});}catch{}
+}
+function resolveEmailTask(threadId, reason){
+  const task = S.tasks.find(t=>t.source==='email' && t.emailThreadId===threadId && t.status!=='done');
+  if(!task) return;
+  console.log('[Denise] Auto-resolving email task:', task.text, '—', reason);
+  task.status='done'; task.due='Done';
+  cacheTasks(); render();
+  fetch(`${API()}/api/tasks/${task.id}`,{method:'PATCH'}).catch(()=>{});
+}
+function checkEmailTasksResolved(){
+  // Resolve open email tasks whose source thread is no longer in the inbox
+  const currentThreadIds = new Set(S.emails.map(e=>e.threadId));
+  const emailTasks = S.tasks.filter(t=>t.source==='email' && t.status!=='done' && t.emailThreadId);
+  let changed = false;
+  for(const task of emailTasks){
+    if(!currentThreadIds.has(task.emailThreadId)){
+      console.log('[Denise] Email task thread gone from inbox — resolving:', task.text);
+      task.status='done'; task.due='Done';
+      fetch(`${API()}/api/tasks/${task.id}`,{method:'PATCH'}).catch(()=>{});
+      changed = true;
+    }
+  }
+  if(changed){ cacheTasks(); render(); }
 }
 function openEditTask(id){
   S.editingTaskId=id;S.taskModalOpen=true;render();
