@@ -24,16 +24,27 @@ const CONFIG_FILE = "./config.json";
 
 function loadDB() { if (!existsSync(DB_FILE)) return { tasks: [], calls: [] }; return JSON.parse(readFileSync(DB_FILE, "utf8")); }
 function saveDB(d) { writeFileSync(DB_FILE, JSON.stringify(d, null, 2)); }
+// In-memory key cache — survives config.json wipes between filesystem flushes
+let _memPocketKey = "";
 function loadConfig() {
   const cfg = existsSync(CONFIG_FILE) ? JSON.parse(readFileSync(CONFIG_FILE, "utf8")) : { pocketApiKey: "", configured: false };
-  // Fall back to env var so key survives redeploys even without browser restore
+  // Priority: config.json → in-memory cache → env var
+  if (!cfg.pocketApiKey && _memPocketKey) {
+    cfg.pocketApiKey = _memPocketKey;
+    cfg.configured = true;
+  }
   if (!cfg.pocketApiKey && process.env.POCKET_API_KEY) {
     cfg.pocketApiKey = process.env.POCKET_API_KEY;
     cfg.configured = true;
   }
+  // Keep memory cache in sync
+  if (cfg.pocketApiKey) _memPocketKey = cfg.pocketApiKey;
   return cfg;
 }
-function saveConfig(c) { writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2)); }
+function saveConfig(c) {
+  if (c.pocketApiKey) _memPocketKey = c.pocketApiKey;
+  writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2));
+}
 
 async function pocketGet(p, apiKey) {
   const key = apiKey || loadConfig().pocketApiKey;
@@ -120,6 +131,10 @@ app.delete("/api/calls/:id", (req, res) => {
   saveDB(db); res.json({ ok: true });
 });
 app.post("/api/sync", async (req, res) => {
+  // Accept key from request body as fallback (frontend sends it after redeploy)
+  if (req.body?.apiKey && !loadConfig().pocketApiKey) {
+    const cfg = loadConfig(); cfg.pocketApiKey = req.body.apiKey; cfg.configured = true; saveConfig(cfg);
+  }
   const cfg = loadConfig(); if (!cfg.pocketApiKey) return res.status(400).json({ error: "Not configured" });
   try {
     // Get actual count from Pocket first

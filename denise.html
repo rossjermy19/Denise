@@ -1569,6 +1569,8 @@ async function syncPocket(){
   try{
     const key=localStorage.getItem('pa_pocket_key')||'';
     if(!key){S.syncMsg='No API key — go through setup';S.syncing=false;render();return;}
+    // Ensure backend has the key (survives Railway redeploys)
+    fetch(`${API()}/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})}).catch(()=>{});
     // Call Pocket API directly from browser
     const res=await fetch('https://public.heypocketai.com/api/v1/public/recordings?limit=50',{
       headers:{Authorization:'Bearer '+key}
@@ -2416,10 +2418,10 @@ function startPolling(){if(pollInterval)clearInterval(pollInterval);pollInterval
 
 render();
 if(isSetup()){
-  // Auto-restore Pocket API key to backend after redeploy
+  // Auto-restore Pocket API key to backend after redeploy (use verify-key so configured=true)
   const savedKey=localStorage.getItem('pa_pocket_key');
   if(savedKey){
-    fetch(`${API()}/api/setup/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:savedKey})}).catch(()=>{});
+    fetch(`${API()}/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:savedKey})}).catch(()=>{});
   }
   fetchData();startPolling();
   fetchWeather(); // No auth needed — loads on every page visit
