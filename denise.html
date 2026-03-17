@@ -899,39 +899,18 @@ RULES:
 }
 
 // Get a valid Google token — uses cache if available, prompts OAuth if not
-async function getGoogleToken(){
-  // 1. Try in-memory cache
-  if(window._gTok && window._gExp > Date.now()){
-    // Validate it's still good
-    const testRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
-      headers: { 'Authorization': 'Bearer ' + window._gTok }
-    });
-    const testData = await testRes.json();
-    if(!testData.error){
-      console.log('[Denise] Using cached token for:', testData.emailAddress);
-      return window._gTok;
-    }
-    console.warn('[Denise] Cached token expired, clearing');
-  }
-  // 2. Try localStorage
-  const savedTok = localStorage.getItem('pa_gmail_token');
-  const savedExp = parseInt(localStorage.getItem('pa_gmail_token_exp') || '0');
-  if(savedTok && savedExp > Date.now()){
-    const testRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
-      headers: { 'Authorization': 'Bearer ' + savedTok }
-    });
-    const testData = await testRes.json();
-    if(!testData.error){
-      window._gTok = savedTok;
-      window._gExp = savedExp;
-      console.log('[Denise] Restored token from cache for:', testData.emailAddress);
-      return savedTok;
-    }
-    console.warn('[Denise] Saved token invalid, clearing');
-    localStorage.removeItem('pa_gmail_token');
-    localStorage.removeItem('pa_gmail_token_exp');
-  }
-  // 3. Fresh OAuth
+function _saveGoogleToken(token){
+  window._gTok = token;
+  window._gExp = Date.now() + 3500000; // ~58 min
+  localStorage.setItem('pa_gmail_token', token);
+  localStorage.setItem('pa_gmail_token_exp', String(window._gExp));
+}
+function _clearGoogleToken(){
+  window._gTok = null; window._gExp = 0;
+  localStorage.removeItem('pa_gmail_token');
+  localStorage.removeItem('pa_gmail_token_exp');
+}
+async function _requestFreshToken(){
   if(!window.google || !window.google.accounts) throw new Error('Google sign-in still loading — please wait a moment and try again');
   const token = await new Promise((resolve, reject) => {
     const client = google.accounts.oauth2.initTokenClient({
@@ -950,14 +929,57 @@ async function getGoogleToken(){
     });
     client.requestAccessToken();
   });
-  // Cache it
-  window._gTok = token;
-  window._gExp = Date.now() + 3500000;
-  localStorage.setItem('pa_gmail_token', token);
-  localStorage.setItem('pa_gmail_token_exp', String(window._gExp));
-  console.log('[Denise] Fresh token obtained:', token.slice(0,10)+'...');
+  _saveGoogleToken(token);
+  console.log('[Denise] Fresh token obtained');
   return token;
 }
+async function getGoogleToken(opts){
+  const silent = opts?.silent || false;
+  // 1. In-memory cache — trust the expiry, no API call needed
+  if(window._gTok && window._gExp > Date.now()){
+    return window._gTok;
+  }
+  // 2. Try localStorage
+  const savedTok = localStorage.getItem('pa_gmail_token');
+  const savedExp = parseInt(localStorage.getItem('pa_gmail_token_exp') || '0');
+  if(savedTok && savedExp > Date.now()){
+    // Validate once when restoring from storage (page reload scenario)
+    try{
+      const testRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+        headers: { 'Authorization': 'Bearer ' + savedTok }
+      });
+      const testData = await testRes.json();
+      if(!testData.error){
+        window._gTok = savedTok;
+        window._gExp = savedExp;
+        console.log('[Denise] Restored token from cache for:', testData.emailAddress);
+        return savedTok;
+      }
+    }catch(e){ console.warn('[Denise] Token validation network error:', e.message); }
+    console.warn('[Denise] Saved token invalid, clearing');
+    _clearGoogleToken();
+  }
+  // 3. Fresh OAuth — skip popup if this is a silent/background call
+  if(silent){
+    console.log('[Denise] Token expired, silent mode — skipping OAuth popup');
+    return null;
+  }
+  return _requestFreshToken();
+}
+// Proactive token refresh — runs every 45 min to get a new token before the old one expires
+setInterval(async()=>{
+  if(!window._gTok) return; // no active session
+  const remaining = window._gExp - Date.now();
+  if(remaining < 15*60*1000){ // less than 15 min left
+    console.log('[Denise] Token expiring soon, proactively refreshing...');
+    try{
+      await _requestFreshToken();
+      console.log('[Denise] Token proactively refreshed');
+    }catch(e){
+      console.warn('[Denise] Proactive token refresh failed (will retry):', e.message);
+    }
+  }
+}, 45*60*1000);
 
 // ── Outlook via backend IMAP/ICS (no Azure admin needed) ──
 let _outlookConnected = false;
@@ -1017,7 +1039,8 @@ async function fetchEmails(){
   S.emailsLoading=true;S.emailsError=null;
   if(!isRefresh) render(); // only show loading spinner on first load, not refreshes
   try{
-    const token = await getGoogleToken();
+    const token = await getGoogleToken({silent: isRefresh});
+    if(!token){ S.emailsLoading=false; return; } // silent mode, no token available
 
     // Always look up the Moov label fresh (no caching — avoids stale sub-label matches)
     try{
@@ -1098,12 +1121,15 @@ async function fetchEmails(){
       });
   } catch(e) {
     console.error('Gmail:', e);
-    // Clear cached token so next attempt triggers fresh login
-    window._gTok = null; window._gExp = 0;
-    localStorage.removeItem('pa_gmail_token');
-    localStorage.removeItem('pa_gmail_token_exp');
-    S.emails = [];
-    S.emailsError = e.message;
+    // Only clear token on auth errors (401/403/invalid_grant), not network blips
+    const msg = (e.message||'').toLowerCase();
+    if(msg.includes('401') || msg.includes('403') || msg.includes('invalid') || msg.includes('sign-in') || msg.includes('token')){
+      console.warn('[Denise] Auth error — clearing token');
+      _clearGoogleToken();
+    } else {
+      console.warn('[Denise] Non-auth error — keeping token for retry');
+    }
+    if(S.emails.length === 0) S.emailsError = e.message; // only show error if we have no emails at all
   }
   // Restore triage flags — first from in-memory (background refresh), then from localStorage (page refresh)
   const cachedTriage = JSON.parse(localStorage.getItem('pa_triage_cache')||'{}');
@@ -2399,13 +2425,14 @@ if(isSetup()){
   const savedExp = parseInt(localStorage.getItem('pa_gmail_token_exp') || '0');
   if(savedTok && savedExp > Date.now()){
     console.log('[Denise] Found cached token, auto-loading Gmail + Calendar');
-    fetchEmails(); // getGoogleToken() inside will validate & use the cached token
-    // Background refresh Gmail every 15 minutes
-    setInterval(()=>{
-      console.log('[Denise] 15-min background Gmail refresh');
-      fetchEmails();
-    }, 15 * 60 * 1000);
+    fetchEmails();
   }
+  // Background refresh Gmail every 15 minutes — always runs, skips silently if no token
+  setInterval(()=>{
+    if(!window._gTok){ console.log('[Denise] 15-min refresh skipped — no active token'); return; }
+    console.log('[Denise] 15-min background Gmail refresh');
+    fetchEmails();
+  }, 15 * 60 * 1000);
   // Auto-load Outlook if backend is configured (IMAP/ICS)
   setTimeout(async()=>{
     const olOk = await checkOutlookStatus();
