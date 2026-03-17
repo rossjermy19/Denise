@@ -603,6 +603,13 @@ const S={
 };
 
 function API(){return(localStorage.getItem('pa_api_base')||'').replace(/\/$/,'');}
+// All backend fetches go through this — automatically attaches the Pocket key header
+function apiFetch(path, opts={}){
+  const key=localStorage.getItem('pa_pocket_key')||'';
+  const headers={...opts.headers||{}};
+  if(key) headers['x-pocket-key']=key;
+  return fetch(API()+path,{...opts,headers});
+}
 function isSetup(){return!!localStorage.getItem('pa_setup_done');}
 function render(){document.getElementById('app').innerHTML=isSetup()?renderDash():renderSetup();bindEvents();}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -612,7 +619,7 @@ function fmtDate(d){try{return new Date(d).toLocaleDateString('en-GB',{weekday:'
 function fmtEmailDate(d){if(!d)return'';const dt=new Date(d),now=new Date(),diff=now-dt;if(diff<86400000)return dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});if(diff<604800000)return dt.toLocaleDateString('en-GB',{weekday:'short'});return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'});}
 
 async function callClaude(system,msg,opts={}){
-  const res=await fetch(`${API()}/api/claude`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system,messages:[{role:'user',content:msg}],model:opts.model||'claude-sonnet-4-20250514',max_tokens:opts.max_tokens||1500})});
+  const res=await apiFetch(`/api/claude`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system,messages:[{role:'user',content:msg}],model:opts.model||'claude-sonnet-4-20250514',max_tokens:opts.max_tokens||1500})});
   const d=await res.json();if(d.error)throw new Error(d.error);return d.content?.[0]?.text||'No response.';
 }
 
@@ -989,7 +996,7 @@ let _outlookConnected = false;
 
 async function checkOutlookStatus(){
   try{
-    const res = await fetch(`${API()}/api/outlook/status`);
+    const res = await apiFetch(`/api/outlook/status`);
     const data = await res.json();
     _outlookConnected = data.configured;
     if(_outlookConnected) console.log('[Denise] Outlook configured for:', data.user);
@@ -1007,7 +1014,7 @@ async function connectOutlook(){
 
 async function fetchOutlookCalendarForDay(dayOffset){
   try{
-    const res = await fetch(`${API()}/api/outlook/calendar?dayOffset=${dayOffset}`);
+    const res = await apiFetch(`/api/outlook/calendar?dayOffset=${dayOffset}`);
     const data = await res.json();
     if(data.error) return [];
     return data.events || [];
@@ -1025,7 +1032,7 @@ async function fetchOutlookCalendar(){
 
 async function fetchOutlookCalendarWeek(){
   try{
-    const res = await fetch(`${API()}/api/outlook/calendar/week`);
+    const res = await apiFetch(`/api/outlook/calendar/week`);
     const data = await res.json();
     S.olCalWeek = data.week || {};
   }catch(e){ console.error('[Denise] Outlook week calendar failed:', e); }
@@ -1426,7 +1433,7 @@ needsReply = 1-based indexes. Most inboxes should have 0-3 items flagged. If not
         const task={id:'email_'+em.threadId,text:a.task,due:dueDate,status:'open',source:'email',business:'moov',emailThreadId:em.threadId,priority:priMap[a.priority]||'auto',details:'From: '+(em.from_name||em.from_email)+' — '+em.subject};
         S.tasks.push(task);
         // Also save to backend
-        fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(task)}).catch(()=>{});
+        apiFetch(`/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(task)}).catch(()=>{});
         console.log('[Denise] Auto-created task from email:', a.task, '(thread:', em.threadId, ')');
       }
       cacheTasks();
@@ -1570,7 +1577,7 @@ async function syncPocket(){
     const key=localStorage.getItem('pa_pocket_key')||'';
     if(!key){S.syncMsg='No API key — go through setup';S.syncing=false;render();return;}
     // Ensure backend has the key (survives Railway redeploys)
-    fetch(`${API()}/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})}).catch(()=>{});
+    apiFetch(`/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})}).catch(()=>{});
     // Call Pocket API directly from browser
     const res=await fetch('https://public.heypocketai.com/api/v1/public/recordings?limit=50',{
       headers:{Authorization:'Bearer '+key}
@@ -1579,7 +1586,7 @@ async function syncPocket(){
     const data=await res.json();
     const recordings=(data.recordings||[]);
     // Send to backend for storage
-    const save=await fetch(`${API()}/api/sync/client`,{
+    const save=await apiFetch(`/api/sync/client`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({recordings})
@@ -1598,7 +1605,7 @@ async function forceSyncPocket(){
 function cacheTasks(){ localStorage.setItem('pa_tasks_cache', JSON.stringify(S.tasks)); }
 async function fetchData(){
   try{
-    const res=await fetch(`${API()}/api/data`);
+    const res=await apiFetch(`/api/data`);
     const d=await res.json();
     console.log('[Denise] fetchData:', d.tasks?.length||0, 'tasks,', d.calls?.length||0, 'recordings');
     S.calls=d.calls||[];S.stats=d.stats||{};
@@ -1613,14 +1620,14 @@ async function fetchData(){
       if(extraCached.length > 0){
         console.log('[Denise] Merged', extraCached.length, 'cached tasks not on backend');
         for(const t of extraCached){
-          fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)}).catch(()=>{});
+          apiFetch(`/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)}).catch(()=>{});
         }
       }
     } else if(cached.length > 0){
       console.log('[Denise] Backend has 0 tasks but localStorage has', cached.length, '— restoring');
       S.tasks=cached;
       for(const t of cached){
-        fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)}).catch(()=>{});
+        apiFetch(`/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)}).catch(()=>{});
       }
     } else {
       S.tasks=[];
@@ -1636,7 +1643,7 @@ async function fetchData(){
 }
 async function toggleTask(id){
   S.tasks=S.tasks.map(t=>t.id===id?{...t,status:t.status==='done'?'open':'done'}:t);cacheTasks();render();
-  try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH'});}catch{}
+  try{await apiFetch(`/api/tasks/${id}`,{method:'PATCH'});}catch{}
 }
 async function addTask(text, due, business, details, priority){
   if(!text.trim())return;
@@ -1646,12 +1653,12 @@ async function addTask(text, due, business, details, priority){
   const pri = priority || 'auto';
   const tmp={id:'tmp_'+Date.now(),text:text.trim(),due:dueStr,status:'open',source:'manual',business:biz,details:det,priority:pri};
   S.tasks=[tmp,...S.tasks];S.newTask='';S.taskModalOpen=false;cacheTasks();render();
-  try{const res=await fetch(`${API()}/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim(),due:dueStr,business:biz,details:det,priority:pri})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);cacheTasks();render();}catch{}
+  try{const res=await apiFetch(`/api/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text.trim(),due:dueStr,business:biz,details:det,priority:pri})});const saved=await res.json();S.tasks=S.tasks.map(t=>t.id===tmp.id?saved:t);cacheTasks();render();}catch{}
 }
 async function updateTask(id, updates){
   S.tasks=S.tasks.map(t=>t.id===id?{...t,...updates}:t);
   S.taskModalOpen=false;S.editingTaskId=null;cacheTasks();render();
-  try{await fetch(`${API()}/api/tasks/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(updates)});}catch{}
+  try{await apiFetch(`/api/tasks/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(updates)});}catch{}
 }
 function resolveEmailTask(threadId, reason){
   const task = S.tasks.find(t=>t.source==='email' && t.emailThreadId===threadId && t.status!=='done');
@@ -1659,7 +1666,7 @@ function resolveEmailTask(threadId, reason){
   console.log('[Denise] Auto-resolving email task:', task.text, '—', reason);
   task.status='done'; task.due='Done';
   cacheTasks(); render();
-  fetch(`${API()}/api/tasks/${task.id}`,{method:'PATCH'}).catch(()=>{});
+  apiFetch(`/api/tasks/${task.id}`,{method:'PATCH'}).catch(()=>{});
 }
 function checkEmailTasksResolved(){
   // Resolve open email tasks whose source thread is no longer in the inbox
@@ -1670,7 +1677,7 @@ function checkEmailTasksResolved(){
     if(!currentThreadIds.has(task.emailThreadId)){
       console.log('[Denise] Email task thread gone from inbox — resolving:', task.text);
       task.status='done'; task.due='Done';
-      fetch(`${API()}/api/tasks/${task.id}`,{method:'PATCH'}).catch(()=>{});
+      apiFetch(`/api/tasks/${task.id}`,{method:'PATCH'}).catch(()=>{});
       changed = true;
     }
   }
@@ -1715,11 +1722,11 @@ async function deleteCall(id){
   S.calls=S.calls.filter(c=>c.id!==id);S.tasks=S.tasks.filter(t=>t.recordingId!==id);
   if(S.selectedCall?.id===id)S.selectedCall=null;
   S.stats={...S.stats,totalCalls:S.calls.length};render();
-  try{await fetch(`${API()}/api/calls/${id}`,{method:'DELETE'});await fetchData();}catch{await fetchData();}
+  try{await apiFetch(`/api/calls/${id}`,{method:'DELETE'});await fetchData();}catch{await fetchData();}
 }
 async function forceSyncPocket(){
   S.syncing=true;render();
-  try{const res=await fetch(`${API()}/api/sync/force`,{method:'POST'});const d=await res.json();S.syncMsg=d.message||d.error;await fetchData();}catch{S.syncMsg='Sync failed';}
+  try{const res=await apiFetch(`/api/sync/force`,{method:'POST'});const d=await res.json();S.syncMsg=d.message||d.error;await fetchData();}catch{S.syncMsg='Sync failed';}
   S.syncing=false;render();setTimeout(()=>{S.syncMsg=null;render();},5000);
 }
 
@@ -1751,18 +1758,18 @@ async function wizCheckBackend(){
 async function wizVerifyKey(){
   const key=document.getElementById('apiKey')?.value||S.apiKey;S.apiKey=key;
   S.verifyingKey=true;S.keyResult=null;render();
-  try{const res=await fetch(`${API()}/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});const data=await res.json();S.keyResult=data;if(data.ok){await fetch(`${API()}/api/setup/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});S.wizStep=3;}}
+  try{const res=await apiFetch(`/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});const data=await res.json();S.keyResult=data;if(data.ok){await apiFetch(`/api/setup/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});S.wizStep=3;}}
   catch{S.keyResult={ok:false,error:'Could not reach backend'};}
   S.verifyingKey=false;render();
 }
 async function wizCheckWebhook(){
   S.checkingWebhook=true;S.webhookResult=null;render();
-  try{const res=await fetch(`${API()}/api/setup/verify-webhook`,{method:'POST'});const data=await res.json();S.webhookResult=data;if(data.ok){localStorage.setItem('pa_setup_done','1');setTimeout(()=>{render();fetchData();startPolling();},1000);}else S.webhookResult={ok:false,message:'No recordings yet — make a short test recording on your Pocket first.'};}
+  try{const res=await apiFetch(`/api/setup/verify-webhook`,{method:'POST'});const data=await res.json();S.webhookResult=data;if(data.ok){localStorage.setItem('pa_setup_done','1');setTimeout(()=>{render();fetchData();startPolling();},1000);}else S.webhookResult={ok:false,message:'No recordings yet — make a short test recording on your Pocket first.'};}
   catch{S.webhookResult={ok:false,message:'Could not reach backend at '+API()};}
   S.checkingWebhook=false;render();
 }
 async function wizSkip(){
-  try{await fetch(`${API()}/api/setup/complete`,{method:'POST'});}catch{}
+  try{await apiFetch(`/api/setup/complete`,{method:'POST'});}catch{}
   localStorage.setItem('pa_setup_done','1');render();fetchData();startPolling();
 }
 function copyText(text,btnId){
@@ -2421,7 +2428,7 @@ if(isSetup()){
   // Auto-restore Pocket API key to backend after redeploy (use verify-key so configured=true)
   const savedKey=localStorage.getItem('pa_pocket_key');
   if(savedKey){
-    fetch(`${API()}/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:savedKey})}).catch(()=>{});
+    apiFetch(`/api/setup/verify-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:savedKey})}).catch(()=>{});
   }
   fetchData();startPolling();
   fetchWeather(); // No auth needed — loads on every page visit

@@ -13,7 +13,7 @@ const CLICKUP_TEAM_ID = "4663587";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 
 const app = express();
-app.use(cors({ origin: "*", methods: ["GET","POST","PATCH","DELETE","PUT","OPTIONS"], allowedHeaders: ["Content-Type","Authorization"] }));
+app.use(cors({ origin: "*", methods: ["GET","POST","PATCH","DELETE","PUT","OPTIONS"], allowedHeaders: ["Content-Type","Authorization","x-pocket-key"] }));
 app.options("*", cors());
 app.use("/webhook", express.raw({ type: "application/json" }));
 app.use(express.json({ limit: "2mb" }));
@@ -24,11 +24,23 @@ const CONFIG_FILE = "./config.json";
 
 function loadDB() { if (!existsSync(DB_FILE)) return { tasks: [], calls: [] }; return JSON.parse(readFileSync(DB_FILE, "utf8")); }
 function saveDB(d) { writeFileSync(DB_FILE, JSON.stringify(d, null, 2)); }
-// In-memory key cache — survives config.json wipes between filesystem flushes
-let _memPocketKey = "";
+// In-memory key cache — the ONLY reliable store on Railway (filesystem + config.json wipe on redeploy)
+let _memPocketKey = process.env.POCKET_API_KEY || "";
+
+// Middleware: accept Pocket key from x-pocket-key header on ANY request — keeps memory cache warm
+app.use((req, res, next) => {
+  const hdrKey = req.headers["x-pocket-key"];
+  if (hdrKey && hdrKey.startsWith("pk_")) {
+    _memPocketKey = hdrKey;
+    // Best-effort persist to config.json (will be wiped on redeploy but helps within a deploy)
+    try { saveConfig({ pocketApiKey: hdrKey, configured: true }); } catch {}
+  }
+  next();
+});
+
 function loadConfig() {
   const cfg = existsSync(CONFIG_FILE) ? JSON.parse(readFileSync(CONFIG_FILE, "utf8")) : { pocketApiKey: "", configured: false };
-  // Priority: config.json → in-memory cache → env var
+  // Priority: in-memory cache (from header) → config.json → env var
   if (!cfg.pocketApiKey && _memPocketKey) {
     cfg.pocketApiKey = _memPocketKey;
     cfg.configured = true;
@@ -37,13 +49,12 @@ function loadConfig() {
     cfg.pocketApiKey = process.env.POCKET_API_KEY;
     cfg.configured = true;
   }
-  // Keep memory cache in sync
   if (cfg.pocketApiKey) _memPocketKey = cfg.pocketApiKey;
   return cfg;
 }
 function saveConfig(c) {
   if (c.pocketApiKey) _memPocketKey = c.pocketApiKey;
-  writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2));
+  try { writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2)); } catch {}
 }
 
 async function pocketGet(p, apiKey) {
