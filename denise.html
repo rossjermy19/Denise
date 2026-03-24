@@ -755,6 +755,7 @@ async function fetchCalendarForDay(dayOffset){
     if(calData.error) return [];
     return (calData.items||[])
       .filter(ev => ev.status !== 'cancelled')
+      .filter(ev => (ev.summary||'') !== 'Private')
       .filter(ev => !(ev.summary||'').toLowerCase().includes('ross in sheffield'))
       .map(ev => {
         const start = ev.start?.dateTime ? new Date(ev.start.dateTime) : null;
@@ -1265,6 +1266,7 @@ async function fetchCalendar(){
         source: 'moov',
       };
     }).filter(ev => ev.status !== 'cancelled')
+      .filter(ev => ev.title !== 'Private')
       .filter(ev => !ev.title.toLowerCase().includes('ross in sheffield'))
       .sort((a,b) => {
         if(a.allDay && !b.allDay) return -1;
